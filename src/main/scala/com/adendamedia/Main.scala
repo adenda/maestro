@@ -57,9 +57,10 @@ object Main extends App {
       ref ! PubSubEvent.Channel(channel, message)
     }
 
-    override def psubscribed(pattern: String, count: Long): Unit = {
-      ref ! PubSubEvent.Pattern(pattern, count)
+    override def message(pattern: String, channel: String, message: String): Unit = {
+      ref ! PubSubEvent.Pattern(pattern, channel, message)
     }
+
   }
 
   connection.addListener(listener)
