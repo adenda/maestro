@@ -12,14 +12,25 @@ class EventCounterTest extends TestKit(ActorSystem("EventCounterTest"))
     system.terminate()
   }
 
-  "EventCounter" must {
+  "ChannelEventCounter" must {
     "roll over to zero after passing max_val" in {
       implicit val max_val: Int = 5
-      val cntr = new EventCounter(system)
+      val cntr = new ChannelEventCounter(system)
       for (_ <- 1 to max_val + 1) {
         cntr.incrementCounter
       }
       cntr.getEventCounterNumber() must be(new StateChannelEventCounter(0))
+    }
+  }
+
+  "PatternEventCounter" must {
+    "roll over to zero after passing max_val" in {
+      implicit val max_val: Int = 5
+      val cntr = new PatternEventCounter(system)
+      for (_ <- 1 to max_val + 1) {
+        cntr.incrementCounter
+      }
+      cntr.getEventCounterNumber() must be(new StatePatternEventCounter(0))
     }
   }
 }
