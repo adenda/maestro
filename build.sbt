@@ -17,7 +17,10 @@ libraryDependencies ++= Seq(
   "com.typesafe" % "config" % "1.3.1",
   "biz.paluch.redis" % "lettuce" % "5.0.0.Beta1",
   "com.typesafe.akka" %% "akka-actor" % akkaVersion,
-  "com.typesafe.akka" %% "akka-stream" % akkaVersion
+  "com.typesafe.akka" %% "akka-agent" % akkaVersion,
+  "com.typesafe.akka" %% "akka-stream" % akkaVersion,
+  "com.typesafe.akka" %%  "akka-testkit" % akkaVersion  % "test",
+  "org.scalatest"     %%  "scalatest"    % "3.0.0"      % "test"
 )
 
 // ------------------------------------------------ //
