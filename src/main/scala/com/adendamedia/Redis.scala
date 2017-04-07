@@ -3,10 +3,8 @@ package com.adendamedia
 import com.lambdaworks.redis.RedisURI
 import com.typesafe.config.ConfigFactory
 import com.lambdaworks.redis.pubsub.StatefulRedisPubSubConnection
-import com.lambdaworks.redis.pubsub.api.sync.RedisPubSubCommands
 import com.lambdaworks.redis.cluster.RedisClusterClient
 import com.lambdaworks.redis.RedisClient
-import com.lambdaworks.redis.pubsub.RedisPubSubAdapter
 import org.slf4j.LoggerFactory
 import akka.stream.scaladsl.{Flow, Sink, Source}
 import akka.actor.{ActorRef, ActorSystem}
@@ -35,11 +33,12 @@ class Redis(system: ActorSystem)(implicit val mat: ActorMaterializer) {
   }
 
   private val redisPubSubPatternSource = Source.actorPublisher[PubSubEvent](PubSubEvent.props)
-  private val ref = Flow[PubSubEvent]
+  implicit val ref = Flow[PubSubEvent]
     .to(Sink.ignore)
     .runWith(redisPubSubPatternSource)
 
-  val connection: StatefulRedisPubSubConnection[String, String] = clientType match {
+
+  implicit val redisConnection: StatefulRedisPubSubConnection[String, String] = clientType match {
     case "cluster" =>
       val client = RedisClusterClient.create(Cluster.node)
       client.connectPubSub()
@@ -48,29 +47,6 @@ class Redis(system: ActorSystem)(implicit val mat: ActorMaterializer) {
       client.connectPubSub()
   }
 
-  private val pubSubEvents = system.actorOf(PubSubEvent.props)
-
-  val listener = new RedisPubSubAdapter[String, String]() {
-    override def message(channel: String, message: String): Unit = {
-      ref ! PubSubEvent.Channel(channel, message)
-    }
-
-    override def message(pattern: String, channel: String, message: String): Unit = {
-      ref ! PubSubEvent.Pattern(pattern, channel, message)
-    }
-
-  }
-
-  connection.addListener(listener)
-
-  // TO-DO: Use async api
-  val sync: RedisPubSubCommands[String, String] = connection.sync()
-
-  private val channel = redisConfig.getString("channel")
-  private val pattern = redisConfig.getString("pattern")
-
-  sync.psubscribe(pattern)
-
-  sync.subscribe(channel)
+  private val eventBus = system.actorOf(EventBus.props)
 }
 
