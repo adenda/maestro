@@ -6,11 +6,8 @@ import com.lambdaworks.redis.pubsub.StatefulRedisPubSubConnection
 import com.lambdaworks.redis.cluster.RedisClusterClient
 import com.lambdaworks.redis.RedisClient
 import org.slf4j.LoggerFactory
-import akka.stream.scaladsl.{Flow, Sink, Source}
 import akka.actor.{ActorRef, ActorSystem}
 import akka.stream.ActorMaterializer
-
-import scala.concurrent.ExecutionContext
 
 class Redis(system: ActorSystem)(implicit val mat: ActorMaterializer) {
   private val logger = LoggerFactory.getLogger(this.getClass)
@@ -32,12 +29,6 @@ class Redis(system: ActorSystem)(implicit val mat: ActorMaterializer) {
     val uri = config.getString("uri")
   }
 
-  private val redisPubSubPatternSource = Source.actorPublisher[PubSubEvent](PubSubEvent.props)
-  implicit val ref = Flow[PubSubEvent]
-    .to(Sink.ignore)
-    .runWith(redisPubSubPatternSource)
-
-
   implicit val redisConnection: StatefulRedisPubSubConnection[String, String] = clientType match {
     case "cluster" =>
       val client = RedisClusterClient.create(Cluster.node)
@@ -46,6 +37,10 @@ class Redis(system: ActorSystem)(implicit val mat: ActorMaterializer) {
       val client = RedisClient.create(Standalone.uri)
       client.connectPubSub()
   }
+
+  implicit val max_val: Int = redisConfig.getInt("pub-sub.max-value")
+
+  implicit val counter = new ChannelEventCounter(system)
 
   private val eventBus = system.actorOf(EventBus.props)
 }

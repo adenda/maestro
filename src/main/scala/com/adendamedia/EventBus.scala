@@ -3,31 +3,39 @@ package com.adendamedia
 import com.typesafe.config.ConfigFactory
 import org.slf4j.LoggerFactory
 import akka.actor._
+import akka.stream.ActorMaterializer
+import akka.stream.scaladsl.{Flow, Sink, Source}
 import com.lambdaworks.redis.pubsub.StatefulRedisPubSubConnection
 import com.lambdaworks.redis.pubsub.RedisPubSubAdapter
 import com.lambdaworks.redis.pubsub.api.sync.RedisPubSubCommands
 
 object EventBus {
-  def props(implicit redisConnection: StatefulRedisPubSubConnection[String, String], ref: ActorRef) = Props(new EventBus)
+  def props(implicit redisConnection: StatefulRedisPubSubConnection[String, String],
+            mat: ActorMaterializer,
+            counter: ChannelEventCounter) = Props(new EventBus)
 
-  case class IncrementCounter(name: String) // TO-DO: Handle other names for counter
+  case object IncrementCounter // TO-DO: Handle other names for counter with case class
 }
 
 class EventBus(implicit val redisConnection: StatefulRedisPubSubConnection[String, String],
-               implicit val ref: ActorRef) extends Actor {
+               implicit val mat: ActorMaterializer,
+               implicit val counter: ChannelEventCounter) extends Actor {
   import EventBus._
-  import context._
 
   private val logger = LoggerFactory.getLogger(this.getClass)
   private val redisConfig = ConfigFactory.load().getConfig("redis")
 
-  implicit val max_val: Int = redisConfig.getInt("pub-sub.max-value")
-  val counter = new ChannelEventCounter(system)
+  private val eventBus: ActorRef = context.self
 
-  private val pubSubEvents = system.actorOf(PubSubEvent.props)
+  private val redisPubSubPatternSource = Source.actorPublisher[PubSubEvent](PubSubEvent.props(eventBus))
+  private val ref = Flow[PubSubEvent]
+    .to(Sink.ignore)
+    .runWith(redisPubSubPatternSource)
 
   def receive = {
-    case IncrementCounter(_) => counter.incrementCounter
+    case IncrementCounter =>
+      println("Incrementing counter")
+      counter.incrementCounter
   }
 
   val listener = new RedisPubSubAdapter[String, String]() {
