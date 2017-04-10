@@ -31,6 +31,7 @@ class ChannelEventCounter(system: ActorSystem)(implicit val max_val: Int) {
   val stateAgent = Agent(new StateChannelEventCounter(0))
 
   def incrementCounter: Unit = {
+    println("Incrementing counter now")
     stateAgent send (oldState => {
       oldState.copy(oldState.counter.nextEventNumber)
     })

@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory
 import akka.actor._
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.{Flow, Sink, Source}
+import scala.concurrent.duration._
 import com.lambdaworks.redis.pubsub.StatefulRedisPubSubConnection
 import com.lambdaworks.redis.pubsub.RedisPubSubAdapter
 import com.lambdaworks.redis.pubsub.api.sync.RedisPubSubCommands
@@ -15,12 +16,15 @@ object EventBus {
             counter: ChannelEventCounter) = Props(new EventBus)
 
   case object IncrementCounter // TO-DO: Handle other names for counter with case class
+  case object GetSample
 }
 
 class EventBus(implicit val redisConnection: StatefulRedisPubSubConnection[String, String],
                implicit val mat: ActorMaterializer,
                implicit val counter: ChannelEventCounter) extends Actor {
   import EventBus._
+  import Sampler._
+  import context.dispatcher
 
   private val logger = LoggerFactory.getLogger(this.getClass)
   private val redisConfig = ConfigFactory.load().getConfig("redis")
@@ -34,8 +38,11 @@ class EventBus(implicit val redisConnection: StatefulRedisPubSubConnection[Strin
 
   def receive = {
     case IncrementCounter =>
-      println("Incrementing counter")
+      println("Event Bus Incrementing counter")
       counter.incrementCounter
+    case GetSample =>
+      println("Called GetSample")
+      sender ! counter.getEventCounterNumber().counter
   }
 
   val listener = new RedisPubSubAdapter[String, String]() {
@@ -60,4 +67,14 @@ class EventBus(implicit val redisConnection: StatefulRedisPubSubConnection[Strin
   sync.psubscribe(pattern)
 
   sync.subscribe(channel)
+
+  private val sampler = context.system.actorOf(Sampler.props(eventBus))
+
+  // scheduler
+  val cancellable = context.system.scheduler.schedule(0 milliseconds,
+    500 milliseconds,
+    sampler,
+    Sample
+  )
+
 }
