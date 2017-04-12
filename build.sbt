@@ -10,6 +10,11 @@ enablePlugins(JavaAppPackaging, DockerPlugin)
 
 resolvers += "Sonatype Releases" at "https://oss.sonatype.org/service/repositories/releases/"
 
+//resolvers += Resolver.url(
+//  "bintray-skuber",
+//  url("http://dl.bintray.com/oriordan/skuber"))(
+//  Resolver.ivyStylePatterns)
+
 val akkaVersion = "2.4.17"
 
 val testDependencies = Seq(
@@ -24,7 +29,8 @@ libraryDependencies ++= Seq(
   "biz.paluch.redis" % "lettuce" % "5.0.0.Beta1",
   "com.typesafe.akka" %% "akka-actor" % akkaVersion,
   "com.typesafe.akka" %% "akka-agent" % akkaVersion,
-  "com.typesafe.akka" %% "akka-stream" % akkaVersion
+  "com.typesafe.akka" %% "akka-stream" % akkaVersion,
+  "io.doriordan" %% "skuber" % "0.3-SNAPSHOT"
 ) ++ testDependencies
 
 // ------------------------------------------------ //

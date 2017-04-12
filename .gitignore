@@ -22,3 +22,5 @@ project/plugins/project/
 *.iws
 .idea/*
 out
+.idea/
+project/project/

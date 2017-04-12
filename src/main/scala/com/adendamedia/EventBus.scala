@@ -28,6 +28,7 @@ class EventBus(implicit val redisConnection: StatefulRedisPubSubConnection[Strin
 
   private val logger = LoggerFactory.getLogger(this.getClass)
   private val redisConfig = ConfigFactory.load().getConfig("redis")
+  private val kubernetesConfig = ConfigFactory.load().getConfig("kubernetes")
 
   private val eventBus: ActorRef = context.self
 
@@ -70,9 +71,11 @@ class EventBus(implicit val redisConnection: StatefulRedisPubSubConnection[Strin
 
   private val sampler = context.system.actorOf(Sampler.props(eventBus))
 
+  private val period = kubernetesConfig.getInt("period")
+
   // scheduler
   val cancellable = context.system.scheduler.schedule(0 milliseconds,
-    500 milliseconds,
+    period seconds,
     sampler,
     Sample
   )
