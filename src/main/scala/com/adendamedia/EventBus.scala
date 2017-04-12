@@ -69,7 +69,13 @@ class EventBus(implicit val redisConnection: StatefulRedisPubSubConnection[Strin
 
   sync.subscribe(channel)
 
-  private val sampler = context.system.actorOf(Sampler.props(eventBus))
+  private val k8sConfig = ConfigFactory.load().getConfig("kubernetes")
+  private val threshold: Int = k8sConfig.getInt("threshold")
+  private val maxValue: Int = redisConfig.getInt("pub-sub.max-value")
+
+  private val k8sMaker = (f: ActorRefFactory) => f.actorOf(Props[Kubernetes])
+
+  private val sampler = context.system.actorOf(Sampler.props(eventBus, k8sMaker, threshold, maxValue))
 
   private val period = kubernetesConfig.getInt("period")
 

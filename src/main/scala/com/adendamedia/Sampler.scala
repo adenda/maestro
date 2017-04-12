@@ -8,14 +8,15 @@ import scala.concurrent.Future
 import com.typesafe.config.ConfigFactory
 
 object Sampler {
-  def props(eventBus: ActorRef) = Props(new Sampler(eventBus))
+  def props(eventBus: ActorRef, k8sMaker: ActorRefFactory => ActorRef, threshold: Int, maxValue: Int) =
+    Props(new Sampler(eventBus, k8sMaker: ActorRefFactory => ActorRef, threshold, maxValue))
 
   final case class Result(sample: Int)
 
   case object Sample
 }
 
-class Sampler(eventBus: ActorRef) extends Actor {
+class Sampler(eventBus: ActorRef, k8sMaker: ActorRefFactory => ActorRef, threshold: Int, maxValue: Int) extends Actor {
   import Sampler._
   import EventBus._
   import Kubernetes._
@@ -25,12 +26,7 @@ class Sampler(eventBus: ActorRef) extends Actor {
 
   var previousSample: Result = Result(0)
 
-  private val k8sConfig = ConfigFactory.load().getConfig("kubernetes")
-  private val threshold = k8sConfig.getInt("threshold")
-  private val redisConfig = ConfigFactory.load().getConfig("redis")
-  private val maxValue = redisConfig.getInt("pub-sub.max-value")
-
-  private val k8s = context.system.actorOf(Kubernetes.props)
+  private val k8s = k8sMaker(context)
 
   def receive = {
     case Sample =>
