@@ -25,13 +25,15 @@ object Conductor {
 
 class Conductor extends Actor {
   import Conductor._
+  import Cluster._
   import context._
 
   private val k8s = k8sInit
-//  import scala.concurrent.ExecutionContext.Implicits.global
 
   // TO-DO: Make these configuration parameters
   private val pollingPeriod = 20 seconds
+
+  private val cluster = context.system.actorOf(Cluster.props)
 
   // TO-DO: We might want to have a timeout period after which the conductor actor simply fails
 
@@ -52,9 +54,15 @@ class Conductor extends Actor {
     val pods: Future[PodList] = k8s list[PodList] LabelSelector(LabelSelector.IsEqualRequirement("app", statefulSetName))
     pods map {
       p =>
-        val newRedisIps = p.items map {
-          pod => pod.status.get.podIP.get
+        val redisIps: List[Option[String]] = p.items map {
+          pod => pod.status.get.podIP
         }
+
+        val newRedisIps: List[String] = for {
+          pod <- redisIps
+          if pod.isDefined
+        } yield pod.get
+
         if (newRedisIps.length > previousRedisIps.length) {
           val newRedisIp = newRedisIps.toSet -- previousRedisIps.toSet
           for (ip <- newRedisIp) joinNewNode(ip, newRedisIps.toSet, currentReplicaCount + 1, newReplicaCount)
@@ -66,6 +74,9 @@ class Conductor extends Actor {
   // join new node will have to be threadsafe
   def joinNewNode(ip: String, newRedisIps: Set[String], currentReplicaCount: Int, newReplicaCount: Int) = {
     println(s"Found a new redis node: $ip")
+
+    cluster ! Join(ip)
+
     if (currentReplicaCount < newReplicaCount) {
       system.scheduler.scheduleOnce(pollingPeriod, self, Poll(newRedisIps.toList, currentReplicaCount, newReplicaCount))
     } else {
