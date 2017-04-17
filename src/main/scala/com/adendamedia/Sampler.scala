@@ -5,6 +5,7 @@ import akka.pattern.ask
 import akka.util.Timeout
 import scala.concurrent.duration._
 import scala.concurrent.Future
+import org.slf4j.LoggerFactory
 import com.typesafe.config.ConfigFactory
 
 object Sampler {
@@ -22,6 +23,8 @@ class Sampler(eventBus: ActorRef, k8sMaker: ActorRefFactory => ActorRef, thresho
   import Kubernetes._
   import context.dispatcher
 
+  private val logger = LoggerFactory.getLogger(this.getClass)
+
   implicit val timeout = Timeout(20 seconds)
 
   var previousSample: Result = Result(0)
@@ -30,7 +33,7 @@ class Sampler(eventBus: ActorRef, k8sMaker: ActorRefFactory => ActorRef, thresho
 
   def receive = {
     case Sample =>
-      println("Called Sample")
+      logger.debug("Called Sample")
       val f: Future[Result] = for {
         x <- ask(eventBus, GetSample).mapTo[Int]
       } yield Result(x)
@@ -38,9 +41,9 @@ class Sampler(eventBus: ActorRef, k8sMaker: ActorRefFactory => ActorRef, thresho
   }
 
   def handleResponse(res: Result): Unit = {
-    println(s"Got response. Old sample is '${previousSample.sample}'. New sample is '${res.sample}'.")
+    logger.debug(s"Got response. Old sample is '${previousSample.sample}'. New sample is '${res.sample}'.")
     if ((res.sample - previousSample.sample) % maxValue >= threshold) {
-      println(s"Threshold reached, so scaling up now.")
+      logger.info(s"Sampling Threshold reached, so scaling up now.")
       k8s ! ScaleUp
     }
     if (previousSample.sample != res.sample) previousSample = res

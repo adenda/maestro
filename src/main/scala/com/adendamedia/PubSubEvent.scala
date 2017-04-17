@@ -3,6 +3,7 @@ package com.adendamedia
 import akka.actor.Props
 import akka.actor.ActorRef
 import akka.stream.actor.ActorPublisher
+import org.slf4j.LoggerFactory
 import com.adendamedia.EventBus.IncrementCounter
 
 object PubSubEvent {
@@ -14,11 +15,13 @@ object PubSubEvent {
 
 class PubSubEvent(eventBus: ActorRef) extends ActorPublisher[PubSubEvent] {
   import PubSubEvent._
+  private val logger = LoggerFactory.getLogger(this.getClass)
 
   def receive = {
-    case pat: Pattern => println(s"Received key pattern ${pat.pattern}, channel: ${pat.channel}, message: ${pat.message}")
+    case pat: Pattern =>
+      logger.debug(s"Received key pattern '${pat.pattern}' on channel '${pat.channel}' with message '${pat.message}'")
     case channel: Channel =>
-      println(s"Received published message ${channel.message} on channel ${channel.channel}")
+      logger.debug(s"Received published message '${channel.message}' on channel '${channel.channel}'")
       eventBus ! IncrementCounter
   }
 }

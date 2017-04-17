@@ -6,7 +6,7 @@ import com.lambdaworks.redis.pubsub.StatefulRedisPubSubConnection
 import com.lambdaworks.redis.cluster.RedisClusterClient
 import com.lambdaworks.redis.RedisClient
 import org.slf4j.LoggerFactory
-import akka.actor.{ActorRef, ActorSystem}
+import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 
 class Redis(system: ActorSystem)(implicit val mat: ActorMaterializer) {

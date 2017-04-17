@@ -7,6 +7,7 @@ import com.typesafe.config.ConfigFactory
 import skuber._
 import skuber.json.format._
 import scala.concurrent.Future
+import org.slf4j.LoggerFactory
 
 /**
   * Actor responsible for polling the stateful set resource until new pods show up, and then messaging the child actor
@@ -22,11 +23,12 @@ object Conductor {
   private val statefulSetName = k8sConfig.getString("statefulset-name")
 }
 
-
 class Conductor extends Actor {
   import Conductor._
   import Cluster._
   import context._
+
+  private val logger = LoggerFactory.getLogger(this.getClass)
 
   private val k8s = k8sInit
 
@@ -43,10 +45,10 @@ class Conductor extends Actor {
 
   def receive = {
     case Update(currentNodeIps: List[String], currentReplicaCount, newReplicaCount) =>
-      println(s"Poll: currentNodesIps: ${currentNodeIps}, currentReplicaCount: ${currentReplicaCount}, newReplicaCount: ${newReplicaCount}")
+      logger.info(s"Polling redis cluster for new nodes to join: current replica count: ${currentReplicaCount}, new replica count: ${newReplicaCount}")
       system.scheduler.scheduleOnce(pollingPeriod, self, Poll(currentNodeIps, currentReplicaCount, newReplicaCount))
     case Poll(currentNodeIps: List[String], currentReplicaCount, newReplicaCount) =>
-      println(s"Polling again")
+      logger.info(s"Polling redis cluster again for new nodes to join: current replica count: ${currentReplicaCount}, new replica count: ${newReplicaCount}")
       pollForNewPods(currentNodeIps, currentReplicaCount, newReplicaCount)
   }
 
@@ -71,16 +73,15 @@ class Conductor extends Actor {
     }
   }
 
-  // join new node will have to be threadsafe
   def joinNewNode(ip: String, newRedisIps: Set[String], currentReplicaCount: Int, newReplicaCount: Int) = {
-    println(s"Found a new redis node: $ip")
+    logger.info(s"Found a new redis node to join redis cluster with cluster IP address '$ip'")
 
     cluster ! Join(ip)
 
     if (currentReplicaCount < newReplicaCount) {
       system.scheduler.scheduleOnce(pollingPeriod, self, Poll(newRedisIps.toList, currentReplicaCount, newReplicaCount))
     } else {
-      println("Found all the redis nodes, we're done here.")
+      logger.info("Successfully polled all new redis nodes to join cluster: we are done here.")
     }
   }
 

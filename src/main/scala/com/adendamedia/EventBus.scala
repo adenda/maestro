@@ -39,10 +39,10 @@ class EventBus(implicit val redisConnection: StatefulRedisPubSubConnection[Strin
 
   def receive = {
     case IncrementCounter =>
-      println("Event Bus Incrementing counter")
+      logger.debug("Event Bus incrementing counter")
       counter.incrementCounter
     case GetSample =>
-      println("Called GetSample")
+      logger.debug("Event Bus getting sample")
       sender ! counter.getEventCounterNumber().counter
   }
 

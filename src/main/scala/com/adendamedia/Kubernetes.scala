@@ -3,20 +3,12 @@ package com.adendamedia
 import skuber._
 import skuber.json.apps.format._
 import skuber.json.format._
-import skuber.json.ext._
 import com.typesafe.config.ConfigFactory
 import skuber.apps.StatefulSet
 import skuber.apps._
-import skuber.ext.Scale.scale
-import scala.concurrent.ExecutionContext.Implicits.global
 import akka.actor._
-
-import skuber.ext._
-import skuber.ext._
-import skuber.json.ext.format._
-
 import kubernetes.Conductor
-
+import org.slf4j.LoggerFactory
 import scala.concurrent.Future
 
 object Kubernetes {
@@ -33,6 +25,8 @@ class Kubernetes extends Actor {
   import Conductor._
   import scala.concurrent.ExecutionContext.Implicits.global
   private val k8s = k8sInit
+
+  private val logger = LoggerFactory.getLogger(this.getClass)
 
   private val conductor = context.system.actorOf(Conductor.props)
 
@@ -61,11 +55,11 @@ class Kubernetes extends Actor {
 
     result recoverWith {
       case ex: Throwable =>
-        println(s"Oops: ${ex.toString}")
+        logger.error(s"Could not get resource '$statefulSetName' to scale: ${ex.toString}")
         Future(Unit)
     }
 
-    val pollResult = for {
+    val updateResult = for {
       (currentRedisIps, currentReplicas, ss) <- result
       newReplicas = currentReplicas + 2
       newSS = ss.copy(spec = Some(ss.spec.get.copy(replicas = newReplicas)))
@@ -74,9 +68,9 @@ class Kubernetes extends Actor {
       conductor ! Update(currentRedisIps, currentReplicas, newReplicas)
     }
 
-    pollResult recoverWith {
+    updateResult recoverWith {
       case ex: Throwable =>
-        println(s"Oops, couldn't scale the statefulset with error: ${ex.toString}")
+        logger.error(s"Could not update resource '$statefulSetName': ${ex.toString}")
         Future(Unit)
     }
 
