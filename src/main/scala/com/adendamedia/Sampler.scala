@@ -20,7 +20,7 @@ object Sampler {
 class Sampler(eventBus: ActorRef, k8sMaker: ActorRefFactory => ActorRef, threshold: Int, maxValue: Int) extends Actor {
   import Sampler._
   import EventBus._
-  import Kubernetes._
+  import com.adendamedia.kubernetes.Kubernetes._
   import context.dispatcher
 
   private val logger = LoggerFactory.getLogger(this.getClass)

@@ -5,6 +5,8 @@ import org.slf4j.LoggerFactory
 import akka.actor._
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.{Flow, Sink, Source}
+import com.adendamedia.kubernetes.Kubernetes
+
 import scala.concurrent.duration._
 import com.lambdaworks.redis.pubsub.StatefulRedisPubSubConnection
 import com.lambdaworks.redis.pubsub.RedisPubSubAdapter

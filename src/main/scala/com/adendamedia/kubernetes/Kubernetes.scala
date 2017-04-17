@@ -1,14 +1,13 @@
-package com.adendamedia
+package com.adendamedia.kubernetes
 
+import akka.actor._
+import com.typesafe.config.ConfigFactory
+import org.slf4j.LoggerFactory
 import skuber._
+import skuber.apps.{StatefulSet, _}
 import skuber.json.apps.format._
 import skuber.json.format._
-import com.typesafe.config.ConfigFactory
-import skuber.apps.StatefulSet
-import skuber.apps._
-import akka.actor._
-import kubernetes.Conductor
-import org.slf4j.LoggerFactory
+
 import scala.concurrent.Future
 
 object Kubernetes {
@@ -21,8 +20,9 @@ object Kubernetes {
 }
 
 class Kubernetes extends Actor {
-  import Kubernetes._
   import Conductor._
+  import Kubernetes._
+
   import scala.concurrent.ExecutionContext.Implicits.global
   private val k8s = k8sInit
 

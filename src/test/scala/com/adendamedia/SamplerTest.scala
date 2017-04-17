@@ -21,7 +21,7 @@ class SamplerTest extends TestKit(ActorSystem("SamplerTest"))
   "Sampler" must {
     "ask Kubernetes to scale up if it reaches the minimum threshold for the configured sample period" in {
       import Sampler._
-      import Kubernetes._
+      import com.adendamedia.kubernetes.Kubernetes._
 
       val threshold: Int = 10
       val maxValue: Int = 20
@@ -72,7 +72,7 @@ class SamplerTest extends TestKit(ActorSystem("SamplerTest"))
   "Sampler" must {
     "ask Kubernetes to scale up if it reaches the minimum threshold for the configured sample period when counter rolls over" in {
       import Sampler._
-      import Kubernetes._
+      import com.adendamedia.kubernetes.Kubernetes._
 
       val threshold: Int = 1
       val maxValue: Int = 19
