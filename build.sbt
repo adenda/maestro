@@ -30,7 +30,7 @@ libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-actor" % akkaVersion,
   "com.typesafe.akka" %% "akka-agent" % akkaVersion,
   "com.typesafe.akka" %% "akka-stream" % akkaVersion,
-  "io.doriordan" %% "skuber" % "0.4-SNAPSHOT"
+  "io.doriordan" %% "skuber" % "0.3-SNAPSHOT"
 ) ++ testDependencies
 
 // ------------------------------------------------ //
