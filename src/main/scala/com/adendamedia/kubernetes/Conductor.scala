@@ -10,7 +10,7 @@ import scala.concurrent.Future
 import org.slf4j.LoggerFactory
 
 /**
-  * Actor responsible for polling the stateful set resource until new pods show up, and then messaging the child actor
+  * Actor responsible for polling the statefulset resource until new pods show up, and then messaging the child actor
   * to join these new nodes to the Redis cluster
   */
 object Conductor {
@@ -18,9 +18,6 @@ object Conductor {
 
   case class Update(currentNodeIps: List[String], currentReplicaCount: Int, newReplicaCount: Int)
   case class Poll(currentNodeIps: List[String], currentReplicaCount: Int, newReplicaCount: Int)
-
-  private val k8sConfig = ConfigFactory.load().getConfig("kubernetes")
-  private val statefulSetName = k8sConfig.getString("statefulset-name")
 }
 
 class Conductor extends Actor {
@@ -28,12 +25,15 @@ class Conductor extends Actor {
   import Cluster._
   import context._
 
+  private val k8sConfig = ConfigFactory.load().getConfig("kubernetes")
+  private val statefulSetName = k8sConfig.getString("statefulset-name")
+  private val pollingPeriod = k8sConfig.getInt("conductor.polling-period")
+
   private val logger = LoggerFactory.getLogger(this.getClass)
 
   private val k8s = k8sInit
 
-  // TO-DO: Make these configuration parameters
-  private val pollingPeriod = 20 seconds
+  private val pollingPeriodSeconds = pollingPeriod seconds
 
   private val cluster = context.system.actorOf(Cluster.props)
 
@@ -46,7 +46,7 @@ class Conductor extends Actor {
   def receive = {
     case Update(currentNodeIps: List[String], currentReplicaCount, newReplicaCount) =>
       logger.info(s"Polling redis cluster for new nodes to join: current replica count: ${currentReplicaCount}, new replica count: ${newReplicaCount}")
-      system.scheduler.scheduleOnce(pollingPeriod, self, Poll(currentNodeIps, currentReplicaCount, newReplicaCount))
+      system.scheduler.scheduleOnce(pollingPeriodSeconds, self, Poll(currentNodeIps, currentReplicaCount, newReplicaCount))
     case Poll(currentNodeIps: List[String], currentReplicaCount, newReplicaCount) =>
       logger.info(s"Polling redis cluster again for new nodes to join: current replica count: ${currentReplicaCount}, new replica count: ${newReplicaCount}")
       pollForNewPods(currentNodeIps, currentReplicaCount, newReplicaCount)
@@ -69,7 +69,7 @@ class Conductor extends Actor {
           val newRedisIp = newRedisIps.toSet -- previousRedisIps.toSet
           for (ip <- newRedisIp) joinNewNode(ip, newRedisIps.toSet, currentReplicaCount + 1, newReplicaCount)
         }
-        else system.scheduler.scheduleOnce(pollingPeriod, self, Poll(newRedisIps, currentReplicaCount, newReplicaCount))
+        else system.scheduler.scheduleOnce(pollingPeriodSeconds, self, Poll(newRedisIps, currentReplicaCount, newReplicaCount))
     }
   }
 
@@ -79,7 +79,7 @@ class Conductor extends Actor {
     cluster ! Join(ip)
 
     if (currentReplicaCount < newReplicaCount) {
-      system.scheduler.scheduleOnce(pollingPeriod, self, Poll(newRedisIps.toList, currentReplicaCount, newReplicaCount))
+      system.scheduler.scheduleOnce(pollingPeriodSeconds, self, Poll(newRedisIps.toList, currentReplicaCount, newReplicaCount))
     } else {
       logger.info("Successfully polled all new redis nodes to join cluster: we are done here.")
     }
