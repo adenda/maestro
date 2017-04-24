@@ -18,8 +18,8 @@ class Redis(system: ActorSystem)(implicit val mat: ActorMaterializer) {
 
   private object Cluster {
     private val config = redisConfig.getConfig("cluster")
-    private val seedServer = config.getString("seed-server.host")
-    private val port = config.getInt("seed-server.port")
+    private val seedServer = config.getString("seed.server.host")
+    private val port = config.getInt("seed.server.port")
     lazy val node = RedisURI.create(seedServer, port)
   }
 

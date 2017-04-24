@@ -1,3 +1,5 @@
+import NativePackagerHelper._
+
 name := "maestro"
 
 organization := "com.adendamedia"
@@ -38,6 +40,8 @@ libraryDependencies ++= Seq(
 // ------------------------------------------------ //
 // ------------- Docker configuration ------------- //
 // ------------------------------------------------ //
+
+mappings in Universal ++= directory(  baseDirectory.value / "src" / "main" / "resources" )
 
 javaOptions in Universal ++= Seq(
   "-Dconfig.file=etc/container.conf"
