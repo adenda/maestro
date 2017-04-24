@@ -20,7 +20,7 @@ class Redis(system: ActorSystem)(implicit val mat: ActorMaterializer) {
     private val config = redisConfig.getConfig("cluster")
     private val seedServer = config.getString("seed-server.host")
     private val port = config.getInt("seed-server.port")
-    val node = RedisURI.create(Cluster.seedServer, Cluster.port)
+    lazy val node = RedisURI.create(seedServer, port)
   }
 
   // for local testing
