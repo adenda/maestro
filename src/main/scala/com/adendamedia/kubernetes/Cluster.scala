@@ -20,14 +20,16 @@ class Cluster extends Actor {
 
   private val logger = LoggerFactory.getLogger(this.getClass)
 
+  private def buildRedisUri(ip: String) = "redis://" + ip
+
   def receive = {
     case Join(ip: String) =>
       logger.info(s"Joining new Redis cluster node with IP address '$ip' as a master node")
-      Library.ref ! Task("+master", ip)
+      Library.ref ! Task("+master", buildRedisUri(ip))
       become({
         case Join(ip: String) =>
           logger.info(s"Joining new Redis cluster node with IP address '$ip' as a slave node")
-          Library.ref ! Task("+slave", ip)
+          Library.ref ! Task("+slave", buildRedisUri(ip))
           unbecome()
       }, discardOld = false)
   }
