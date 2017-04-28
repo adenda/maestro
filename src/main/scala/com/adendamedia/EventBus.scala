@@ -52,10 +52,10 @@ class EventBus(implicit val redisConnection: StatefulRedisPubSubConnection[Strin
       sender ! channelCounter.getEventCounterNumber().counter
     case IncrementPatternCounter =>
       logger.debug("Event Bus incrementing pattern counter")
-      channelCounter.incrementCounter
+      patternCounter.incrementCounter
     case GetPatternSample =>
       logger.debug("Event Bus getting pattern sample")
-      sender ! channelCounter.getEventCounterNumber().counter
+      sender ! patternCounter.getEventCounterNumber().counter
   }
 
   val listener = new RedisPubSubAdapter[String, String]() {
