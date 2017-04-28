@@ -6,7 +6,6 @@ import akka.util.Timeout
 import scala.concurrent.duration._
 import scala.concurrent.Future
 import org.slf4j.LoggerFactory
-import com.typesafe.config.ConfigFactory
 
 object Sampler {
   def props(eventBus: ActorRef, k8sMaker: ActorRefFactory => ActorRef, threshold: Int, maxValue: Int) =
@@ -14,7 +13,9 @@ object Sampler {
 
   final case class Result(sample: Int)
 
-  case object Sample
+  trait Sample
+  case object SampleChannel extends Sample
+  case object SamplePattern extends Sample
 }
 
 class Sampler(eventBus: ActorRef, k8sMaker: ActorRefFactory => ActorRef, threshold: Int, maxValue: Int) extends Actor {
@@ -32,10 +33,16 @@ class Sampler(eventBus: ActorRef, k8sMaker: ActorRefFactory => ActorRef, thresho
   private val k8s = k8sMaker(context)
 
   def receive = {
-    case Sample =>
-      logger.debug("Called Sample")
+    case SampleChannel =>
+      logger.debug("Called Channel Sample")
       val f: Future[Result] = for {
-        x <- ask(eventBus, GetSample).mapTo[Int]
+        x <- ask(eventBus, GetChannelSample).mapTo[Int]
+      } yield Result(x)
+      f map handleResponse
+    case SamplePattern =>
+      logger.debug("Called Pattern Sample")
+      val f: Future[Result] = for {
+        x <- ask(eventBus, GetPatternSample).mapTo[Int]
       } yield Result(x)
       f map handleResponse
   }

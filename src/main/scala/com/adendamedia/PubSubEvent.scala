@@ -4,7 +4,6 @@ import akka.actor.Props
 import akka.actor.ActorRef
 import akka.stream.actor.ActorPublisher
 import org.slf4j.LoggerFactory
-import com.adendamedia.EventBus.IncrementCounter
 
 object PubSubEvent {
   def props(eventBus: ActorRef): Props = Props(new PubSubEvent(eventBus))
@@ -15,14 +14,15 @@ object PubSubEvent {
 
 class PubSubEvent(eventBus: ActorRef) extends ActorPublisher[PubSubEvent] {
   import PubSubEvent._
+  import EventBus._
   private val logger = LoggerFactory.getLogger(this.getClass)
 
   def receive = {
     case pat: Pattern =>
       logger.debug(s"Received key pattern '${pat.pattern}' on channel '${pat.channel}' with message '${pat.message}'")
-      eventBus ! IncrementCounter
+      eventBus ! IncrementPatternCounter
     case channel: Channel =>
       logger.debug(s"Received published message '${channel.message}' on channel '${channel.channel}'")
-      eventBus ! IncrementCounter
+      eventBus ! IncrementChannelCounter
   }
 }

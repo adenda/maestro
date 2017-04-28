@@ -15,15 +15,19 @@ import com.lambdaworks.redis.pubsub.api.sync.RedisPubSubCommands
 object EventBus {
   def props(implicit redisConnection: StatefulRedisPubSubConnection[String, String],
             mat: ActorMaterializer,
-            counter: ChannelEventCounter) = Props(new EventBus)
+            channelCounter: ChannelEventCounter,
+            patternCounter: PatternEventCounter) = Props(new EventBus)
 
-  case object IncrementCounter // TO-DO: Handle other names for counter with case class
-  case object GetSample
+  case object IncrementChannelCounter
+  case object IncrementPatternCounter
+  case object GetChannelSample
+  case object GetPatternSample
 }
 
 class EventBus(implicit val redisConnection: StatefulRedisPubSubConnection[String, String],
                implicit val mat: ActorMaterializer,
-               implicit val counter: ChannelEventCounter) extends Actor {
+               implicit val channelCounter: ChannelEventCounter,
+               implicit val patternCounter: PatternEventCounter) extends Actor {
   import EventBus._
   import Sampler._
   import context.dispatcher
@@ -40,12 +44,18 @@ class EventBus(implicit val redisConnection: StatefulRedisPubSubConnection[Strin
     .runWith(redisPubSubPatternSource)
 
   def receive = {
-    case IncrementCounter =>
-      logger.debug("Event Bus incrementing counter")
-      counter.incrementCounter
-    case GetSample =>
-      logger.debug("Event Bus getting sample")
-      sender ! counter.getEventCounterNumber().counter
+    case IncrementChannelCounter =>
+      logger.debug("Event Bus incrementing channel counter")
+      channelCounter.incrementCounter
+    case GetChannelSample =>
+      logger.debug("Event Bus getting channel sample")
+      sender ! channelCounter.getEventCounterNumber().counter
+    case IncrementPatternCounter =>
+      logger.debug("Event Bus incrementing pattern counter")
+      channelCounter.incrementCounter
+    case GetPatternSample =>
+      logger.debug("Event Bus getting pattern sample")
+      sender ! channelCounter.getEventCounterNumber().counter
   }
 
   val listener = new RedisPubSubAdapter[String, String]() {
@@ -81,11 +91,16 @@ class EventBus(implicit val redisConnection: StatefulRedisPubSubConnection[Strin
 
   private val period = kubernetesConfig.getInt("period")
 
+  private val samplerType: Sample = ConfigFactory.load().getConfig("redis").getString("sampler.type") match {
+    case "channel" => SampleChannel
+    case "pattern" => SamplePattern
+  }
+
   // scheduler
   val cancellable = context.system.scheduler.schedule(0 milliseconds,
     period seconds,
     sampler,
-    Sample
+    samplerType
   )
 
 }

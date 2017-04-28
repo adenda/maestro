@@ -42,6 +42,8 @@ class Redis(system: ActorSystem)(implicit val mat: ActorMaterializer) {
 
   implicit val counter = new ChannelEventCounter(system)
 
+  implicit val patternCount = new PatternEventCounter(system)
+
   private val eventBus = system.actorOf(EventBus.props)
 }
 
