@@ -20,6 +20,7 @@ class PubSubEvent(eventBus: ActorRef) extends ActorPublisher[PubSubEvent] {
   def receive = {
     case pat: Pattern =>
       logger.debug(s"Received key pattern '${pat.pattern}' on channel '${pat.channel}' with message '${pat.message}'")
+      eventBus ! IncrementCounter
     case channel: Channel =>
       logger.debug(s"Received published message '${channel.message}' on channel '${channel.channel}'")
       eventBus ! IncrementCounter
