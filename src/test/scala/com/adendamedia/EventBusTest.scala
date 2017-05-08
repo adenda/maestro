@@ -3,7 +3,7 @@ package com.adendamedia
 import akka.testkit.{TestActorRef, TestKit}
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
-import com.adendamedia.EventBus.IncrementCounter
+import com.adendamedia.EventBus._
 import com.lambdaworks.redis.pubsub.StatefulRedisPubSubConnection
 import org.scalatest.{BeforeAndAfterAll, MustMatchers, WordSpecLike}
 //import org.mockito.Mockito._

@@ -6,7 +6,7 @@ import akka.testkit.TestProbe
 import akka.actor.ActorSystem
 import akka.actor.Actor
 import akka.actor.ActorRefFactory
-import com.adendamedia.EventBus.GetSample
+import com.adendamedia.EventBus._
 import org.scalatest.{BeforeAndAfterAll, MustMatchers, WordSpecLike}
 import scala.concurrent.duration._
 
@@ -18,7 +18,7 @@ class SamplerTest extends TestKit(ActorSystem("SamplerTest"))
     system.terminate()
   }
 
-  "Sampler" must {
+  "Pattern Sampler" must {
     "ask Kubernetes to scale up if it reaches the minimum threshold for the configured sample period" in {
       import Sampler._
       import com.adendamedia.kubernetes.Kubernetes._
@@ -28,7 +28,7 @@ class SamplerTest extends TestKit(ActorSystem("SamplerTest"))
 
       val eventBus = TestActorRef(new Actor{
         def receive = {
-          case GetSample =>
+          case GetPatternSample =>
             sender ! threshold
         }
       })
@@ -38,13 +38,13 @@ class SamplerTest extends TestKit(ActorSystem("SamplerTest"))
 
       val sampler = system.actorOf(Sampler.props(eventBus, k8sMaker, threshold, maxValue))
 
-      sampler ! Sample
+      sampler ! SamplePattern
 
       probe.expectMsg(ScaleUp)
     }
   }
 
-  "Sampler" must {
+  "Pattern Sampler" must {
     "not ask Kubernetes to scale up if it reaches the minimum threshold for the configured sample period" in {
       import Sampler._
 
@@ -53,7 +53,7 @@ class SamplerTest extends TestKit(ActorSystem("SamplerTest"))
 
       val eventBus = TestActorRef(new Actor{
         def receive = {
-          case GetSample =>
+          case GetPatternSample =>
             sender ! (threshold - 1)
         }
       })
@@ -63,13 +63,13 @@ class SamplerTest extends TestKit(ActorSystem("SamplerTest"))
 
       val sampler = system.actorOf(Sampler.props(eventBus, k8sMaker, threshold, maxValue))
 
-      sampler ! Sample
+      sampler ! SamplePattern
 
       probe.expectNoMsg(100 milliseconds)
     }
   }
 
-  "Sampler" must {
+  "Pattern Sampler" must {
     "ask Kubernetes to scale up if it reaches the minimum threshold for the configured sample period when counter rolls over" in {
       import Sampler._
       import com.adendamedia.kubernetes.Kubernetes._
@@ -79,7 +79,7 @@ class SamplerTest extends TestKit(ActorSystem("SamplerTest"))
 
       val eventBus = TestActorRef(new Actor{
         def receive = {
-          case GetSample =>
+          case GetPatternSample =>
             sender ! 10
         }
       })
@@ -89,8 +89,8 @@ class SamplerTest extends TestKit(ActorSystem("SamplerTest"))
 
       val sampler = system.actorOf(Sampler.props(eventBus, k8sMaker, threshold, maxValue))
 
-      sampler ! Sample
-      sampler ! Sample
+      sampler ! SamplePattern
+      sampler ! SamplePattern
 
       probe.expectMsg(ScaleUp)
     }
