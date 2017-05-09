@@ -4,6 +4,8 @@ import akka.actor._
 import scala.concurrent.duration._
 import com.typesafe.config.ConfigFactory
 
+import com.github.kliewkliew.cornucopia.Library
+import com.github.kliewkliew.cornucopia.actors.CornucopiaSource.Task
 import skuber._
 import skuber.json.format._
 import scala.concurrent.Future
@@ -35,7 +37,7 @@ class Conductor extends Actor {
 
   private val pollingPeriodSeconds = pollingPeriod seconds
 
-  private val cluster = context.system.actorOf(Cluster.props)
+  private val cluster = context.system.actorOf(Cluster.props(Library.ref))
 
   // TO-DO: We might want to have a timeout period after which the conductor actor simply fails
 
