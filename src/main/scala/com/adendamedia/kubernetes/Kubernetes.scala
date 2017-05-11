@@ -18,6 +18,7 @@ object Kubernetes {
 
   private val k8sConfig = ConfigFactory.load().getConfig("kubernetes")
   private val statefulSetName = k8sConfig.getString("statefulset-name")
+  private val newNodesNumber = k8sConfig.getInt("new-nodes-number")
 }
 
 class Kubernetes extends Actor {
@@ -68,10 +69,10 @@ class Kubernetes extends Actor {
         Future(Unit)
     }
 
-    // Scale up the stateful set by 2 nodes (will be 1 master and 1 slave)
+    // Scale up the stateful set by configured number of nodes (default will be 2 nodes: 1 master and 1 slave)
     val updateResult = for {
       (currentRedisIps, currentReplicas, ss) <- result
-      newReplicas = currentReplicas + 2
+      newReplicas = currentReplicas + newNodesNumber
       newSS = ss.copy(spec = Some(ss.spec.get.copy(replicas = newReplicas)))
       _ <- k8s update newSS
     } yield {
