@@ -36,9 +36,8 @@ class Cluster(cornucopiaRef: ActorRef) extends Actor with ActorLogging {
       logger.info(s"Joining new Redis cluster node with IP address '$ip' as a master node")
       val result = ask(cornucopiaRef, Task("+master", buildRedisUri(ip))).mapTo[Either[String, String]]
       result map {
-        case Right(success) =>
-          log.info(s"Successfully added master redis node and resharded cluster")
-          k8sController ! ScaleUpSuccess
+        case Right(_) =>
+          k8sController ! ScaleUpSuccess("Successfully added master redis node and resharded cluster")
         case Left(error) =>
           // TO-DO: Throw exception and implement some type of supervision strategy in parent
           log.error(s"Error adding master: $error")
@@ -46,7 +45,14 @@ class Cluster(cornucopiaRef: ActorRef) extends Actor with ActorLogging {
       become({
         case Join(ip: String, k8sController: ActorRef) =>
           log.info(s"Joining new Redis cluster node with IP address '$ip' as a slave node")
-          cornucopiaRef ! Task("+slave", buildRedisUri(ip))
+          val result = ask(cornucopiaRef, Task("+slave", buildRedisUri(ip))).mapTo[Either[String, String]]
+          result map {
+            case Right(_) =>
+              k8sController ! ScaleUpSuccess("Successfully added slave redis node")
+            case _ =>
+              // TO-DO: Throw exception and implement some type of supervision strategy in parent
+              log.error(s"Error adding slave")
+          }
           unbecome()
       }, discardOld = false)
   }

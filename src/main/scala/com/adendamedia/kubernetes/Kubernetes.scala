@@ -14,7 +14,7 @@ object Kubernetes {
   def props = Props(new Kubernetes)
 
   case object ScaleUp
-  case object ScaleUpSuccess
+  case class ScaleUpSuccess(msg: String)
 
   private val k8sConfig = ConfigFactory.load().getConfig("kubernetes")
   private val statefulSetName = k8sConfig.getString("statefulset-name")
@@ -32,19 +32,19 @@ class Kubernetes extends Actor {
 
   private val conductor = context.system.actorOf(Conductor.props)
 
-  private var isScalingUp = false
+  private var scaleCounter = 0
 
   def receive = {
     case ScaleUp =>
-      if (!isScalingUp) scaleUp
+      if (scaleCounter == 0) scaleUp
       else logger.warn(s"Kubernetes actor asked to scale, but scale is already underway, so ignoring scale up request for now")
-    case ScaleUpSuccess =>
-      logger.info(s"Redis cluster successfully scaled up and resharding complete")
-      isScalingUp = false
+    case ScaleUpSuccess(msg) =>
+      logger.info(msg)
+      scaleCounter -= 1
   }
 
   private def scaleUp = {
-    isScalingUp = true
+    scaleCounter = newNodesNumber
     // First get the number of replicas for the stateful set. Second, get the list of current pods in the statefulset.
     // Third, message the Conductor child actor with the current number of pods and the list of the current pod cluster
     // IP addresses, and the expected new number of pods. The Conductor actor is responsible for awaiting the addition
