@@ -5,7 +5,7 @@ name := "maestro"
 organization := "com.adendamedia"
 
 //version := "0.1.4"
-version := "0.20-SNAPSHOT"
+version := "0.21-SNAPSHOT"
 
 scalaVersion := "2.11.8"
 
@@ -46,7 +46,7 @@ mappings in Universal ++= directory( baseDirectory.value / "src" / "main" / "res
 
 javaOptions in Universal ++= Seq(
   "-Dconfig.file=/usr/local/etc/container.conf",
-  "-Dlog4j.configuration=/usr/local/etc/log4j.properties"
+  "-Dlog4j.configuration=file:/usr/local/etc/log4j.properties"
 )
 
 packageName in Docker := packageName.value
