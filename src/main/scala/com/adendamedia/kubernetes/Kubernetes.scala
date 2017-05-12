@@ -30,7 +30,7 @@ class Kubernetes extends Actor {
 
   private val logger = LoggerFactory.getLogger(this.getClass)
 
-  private val conductor = context.system.actorOf(Conductor.props)
+  private val conductor = context.system.actorOf(Conductor.props(self))
 
   private var scaleCounter = 0
 

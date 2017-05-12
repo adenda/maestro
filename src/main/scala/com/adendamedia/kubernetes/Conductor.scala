@@ -16,13 +16,13 @@ import org.slf4j.LoggerFactory
   * to join these new nodes to the Redis cluster
   */
 object Conductor {
-  def props = Props(new Conductor)
+  def props(k8sController: ActorRef) = Props(new Conductor(k8sController))
 
   case class Update(currentNodeIps: List[String], currentReplicaCount: Int, newReplicaCount: Int)
-  case class Poll(currentNodeIps: List[String], currentReplicaCount: Int, newReplicaCount: Int, k8sController: ActorRef)
+  case class Poll(currentNodeIps: List[String], currentReplicaCount: Int, newReplicaCount: Int)
 }
 
-class Conductor extends Actor {
+class Conductor(k8sController: ActorRef) extends Actor {
   import Conductor._
   import Cluster._
   import context._
@@ -37,7 +37,7 @@ class Conductor extends Actor {
 
   private val pollingPeriodSeconds = pollingPeriod seconds
 
-  private val cluster = context.system.actorOf(Cluster.props(Library.ref))
+  private val cluster = context.system.actorOf(Cluster.props(Library.ref, k8sController))
 
   // TO-DO: We might want to have a timeout period after which the conductor actor simply fails
 
@@ -48,14 +48,13 @@ class Conductor extends Actor {
   def receive = {
     case Update(currentNodeIps: List[String], currentReplicaCount, newReplicaCount) =>
       logger.info(s"Polling redis cluster for new nodes to join: current replica count: ${currentReplicaCount}, new replica count: ${newReplicaCount}")
-      val k8sController = sender // we keep track of parent to inform it once the resharding is completed
-      system.scheduler.scheduleOnce(pollingPeriodSeconds, self, Poll(currentNodeIps, currentReplicaCount, newReplicaCount, k8sController))
-    case Poll(currentNodeIps: List[String], currentReplicaCount, newReplicaCount, k8sController: ActorRef) =>
+      system.scheduler.scheduleOnce(pollingPeriodSeconds, self, Poll(currentNodeIps, currentReplicaCount, newReplicaCount))
+    case Poll(currentNodeIps: List[String], currentReplicaCount, newReplicaCount) =>
       logger.info(s"Polling redis cluster again for new nodes to join: current replica count: ${currentReplicaCount}, new replica count: ${newReplicaCount}")
-      pollForNewPods(currentNodeIps, currentReplicaCount, newReplicaCount, k8sController)
+      pollForNewPods(currentNodeIps, currentReplicaCount, newReplicaCount)
   }
 
-  def pollForNewPods(previousRedisIps: List[String], currentReplicaCount: Int, newReplicaCount: Int, k8sController: ActorRef) = {
+  def pollForNewPods(previousRedisIps: List[String], currentReplicaCount: Int, newReplicaCount: Int) = {
     val pods: Future[PodList] = k8s list[PodList] LabelSelector(LabelSelector.IsEqualRequirement("app", statefulSetName))
     pods map {
       p =>
@@ -70,19 +69,19 @@ class Conductor extends Actor {
 
         if (newRedisIps.length > previousRedisIps.length) {
           val newRedisIp = newRedisIps.toSet -- previousRedisIps.toSet
-          for (ip <- newRedisIp) joinNewNode(ip, newRedisIps.toSet, currentReplicaCount + 1, newReplicaCount, k8sController)
+          for (ip <- newRedisIp) joinNewNode(ip, newRedisIps.toSet, currentReplicaCount + 1, newReplicaCount)
         }
-        else system.scheduler.scheduleOnce(pollingPeriodSeconds, self, Poll(newRedisIps, currentReplicaCount, newReplicaCount, k8sController))
+        else system.scheduler.scheduleOnce(pollingPeriodSeconds, self, Poll(newRedisIps, currentReplicaCount, newReplicaCount))
     }
   }
 
-  def joinNewNode(ip: String, newRedisIps: Set[String], currentReplicaCount: Int, newReplicaCount: Int, k8sController: ActorRef) = {
+  def joinNewNode(ip: String, newRedisIps: Set[String], currentReplicaCount: Int, newReplicaCount: Int) = {
     logger.info(s"Found a new redis node to join redis cluster with cluster IP address '$ip'")
 
-    cluster ! Join(ip, k8sController)
+    cluster ! Join(ip)
 
     if (currentReplicaCount < newReplicaCount) {
-      system.scheduler.scheduleOnce(pollingPeriodSeconds, self, Poll(newRedisIps.toList, currentReplicaCount, newReplicaCount, k8sController))
+      system.scheduler.scheduleOnce(pollingPeriodSeconds, self, Poll(newRedisIps.toList, currentReplicaCount, newReplicaCount))
     } else {
       logger.info("Successfully polled all new redis nodes to join cluster: we are done here.")
     }
