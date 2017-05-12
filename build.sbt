@@ -24,7 +24,7 @@ val testDependencies = Seq(
   "com.typesafe.akka" %%  "akka-testkit" % akkaVersion  % "test",
   "org.scalatest"     %%  "scalatest"    % "3.0.0"      % "test",
   "org.mockito" % "mockito-all" % "1.10.19" % Test
-)
+).map(_.exclude("ch.qos.logback", "logback-classic"))
 
 libraryDependencies ++= Seq(
   "com.github.kliewkliew" %% "salad" % "0.11.04",
@@ -34,8 +34,9 @@ libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-actor" % akkaVersion,
   "com.typesafe.akka" %% "akka-agent" % akkaVersion,
   "com.typesafe.akka" %% "akka-stream" % akkaVersion,
-  "io.doriordan" %% "skuber" % "0.5-SNAPSHOT"
-) ++ testDependencies
+  "io.doriordan" %% "skuber" % "0.5-SNAPSHOT",
+  "org.slf4j" % "slf4j-log4j12" % "1.7.22"
+).map(_.exclude("ch.qos.logback", "logback-classic")) ++ testDependencies
 
 // ------------------------------------------------ //
 // ------------- Docker configuration ------------- //
