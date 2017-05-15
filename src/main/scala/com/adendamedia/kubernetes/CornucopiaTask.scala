@@ -32,8 +32,8 @@ class CornucopiaTask(cornucopiaRef: ActorRef, k8sController: ActorRef) extends A
       val msg = if (nodeType == "master") "Successfully added master redis node and resharded cluster"
                 else "Successfully added slave redis node"
       k8sController ! ScaleUpSuccess(msg)
-    case Left(nodeType: String) =>
-      logger.error(s"Failed trying to add redis $nodeType node to cluster, telling Kubernetes controller")
+    case Left(e: String) =>
+      logger.error(s"Failed trying to add redis node to cluster: $e")
       // TO-DO: throw exception and implement some type of supervision strategy
   }
 }
