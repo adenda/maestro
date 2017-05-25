@@ -12,6 +12,8 @@ import com.lambdaworks.redis.pubsub.StatefulRedisPubSubConnection
 import com.lambdaworks.redis.pubsub.RedisPubSubAdapter
 import com.lambdaworks.redis.pubsub.api.sync.RedisPubSubCommands
 
+import com.adendamedia.metrics.{MemorySampler, RedisSample, RedisServerInfo}
+
 object EventBus {
   def props(implicit redisConnection: StatefulRedisPubSubConnection[String, String],
             mat: ActorMaterializer,
@@ -22,6 +24,8 @@ object EventBus {
   case object IncrementPatternCounter
   case object GetChannelSample
   case object GetPatternSample
+
+  case object GetRedisMemoryUsage
 }
 
 class EventBus(implicit val redisConnection: StatefulRedisPubSubConnection[String, String],
@@ -30,6 +34,10 @@ class EventBus(implicit val redisConnection: StatefulRedisPubSubConnection[Strin
                implicit val patternCounter: PatternEventCounter) extends Actor {
   import EventBus._
   import Sampler._
+  import RedisSample._
+  import RedisServerInfo._
+  import MemorySampler._
+
   import context.dispatcher
 
   private val logger = LoggerFactory.getLogger(this.getClass)
@@ -38,10 +46,12 @@ class EventBus(implicit val redisConnection: StatefulRedisPubSubConnection[Strin
 
   private val eventBus: ActorRef = context.self
 
-  private val redisPubSubPatternSource = Source.actorPublisher[PubSubEvent](PubSubEvent.props(eventBus))
-  private val ref = Flow[PubSubEvent]
-    .to(Sink.ignore)
-    .runWith(redisPubSubPatternSource)
+//  private val redisPubSubPatternSource = Source.actorPublisher[PubSubEvent](PubSubEvent.props(eventBus))
+//  private val ref = Flow[PubSubEvent]
+//    .to(Sink.ignore)
+//    .runWith(redisPubSubPatternSource)
+
+  private val redisServerInfo = context.system.actorOf(RedisServerInfo.props)
 
   def receive = {
     case IncrementChannelCounter =>
@@ -56,51 +66,66 @@ class EventBus(implicit val redisConnection: StatefulRedisPubSubConnection[Strin
     case GetPatternSample =>
       logger.debug("Event Bus getting pattern sample")
       sender ! patternCounter.getEventCounterNumber().counter
+    case GetRedisMemoryUsage =>
+      logger.debug("Event Bus getting redis server info")
+      redisServerInfo.tell(GetRedisServerInfo, sender)
   }
 
-  val listener = new RedisPubSubAdapter[String, String]() {
-    override def message(channel: String, message: String): Unit = {
-      ref ! PubSubEvent.Channel(channel, message)
-    }
-
-    override def message(pattern: String, channel: String, message: String): Unit = {
-      ref ! PubSubEvent.Pattern(pattern, channel, message)
-    }
+  def getRedisMemoryUsage(ref: ActorRef) = {
 
   }
 
-  redisConnection.addListener(listener)
+//  val listener = new RedisPubSubAdapter[String, String]() {
+//    override def message(channel: String, message: String): Unit = {
+//      ref ! PubSubEvent.Channel(channel, message)
+//    }
+//
+//    override def message(pattern: String, channel: String, message: String): Unit = {
+//      ref ! PubSubEvent.Pattern(pattern, channel, message)
+//    }
+//
+//  }
+
+//  redisConnection.addListener(listener)
 
   // TO-DO: Use async api
-  val sync: RedisPubSubCommands[String, String] = redisConnection.sync()
+//  val sync: RedisPubSubCommands[String, String] = redisConnection.sync()
 
   private val channel = redisConfig.getString("channel")
   private val pattern = redisConfig.getString("pattern")
 
-  sync.psubscribe(pattern)
-
-  sync.subscribe(channel)
+//  sync.psubscribe(pattern)
+//
+//  sync.subscribe(channel)
 
   private val k8sConfig = ConfigFactory.load().getConfig("kubernetes")
-  private val threshold: Int = k8sConfig.getInt("threshold")
-  private val maxValue: Int = redisConfig.getInt("pub-sub.max-value")
+//  private val threshold: Int = k8sConfig.getInt("threshold")
+//  private val maxValue: Int = redisConfig.getInt("pub-sub.max-value")
 
   private val k8sMaker = (f: ActorRefFactory) => f.actorOf(Props[Kubernetes])
 
-  private val sampler = context.system.actorOf(Sampler.props(eventBus, k8sMaker, threshold, maxValue))
+  private val memorySampler = context.system.actorOf(MemorySampler.props(eventBus))
+
+//  private val sampler = context.system.actorOf(Sampler.props(eventBus, k8sMaker, threshold, maxValue))
 
   private val period = kubernetesConfig.getInt("period")
 
-  private val samplerType: Sample = ConfigFactory.load().getConfig("redis").getString("sampler.type") match {
-    case "channel" => SampleChannel
-    case "pattern" => SamplePattern
-  }
+//  private val samplerType: Sample = ConfigFactory.load().getConfig("redis").getString("sampler.type") match {
+//    case "channel" => SampleChannel
+//    case "pattern" => SamplePattern
+//  }
 
-  // scheduler
   val cancellable = context.system.scheduler.schedule(0 milliseconds,
     period seconds,
-    sampler,
-    samplerType
+    memorySampler,
+    SampleMemory
   )
+
+  // scheduler
+//  val cancellable = context.system.scheduler.schedule(0 milliseconds,
+//    period seconds,
+//    sampler,
+//    samplerType
+//  )
 
 }
