@@ -12,6 +12,8 @@ case class StateChannelEventCounter(counter: Int) extends RedisEventCounter
 
 case class StatePatternEventCounter(counter: Int) extends RedisEventCounter
 
+case class StateMemoryScale(counter: Int) extends RedisEventCounter
+
 trait EventCounter {
   implicit val ex: ExecutionContextExecutor
 
@@ -54,6 +56,29 @@ class PatternEventCounter(system: ActorSystem)(implicit val max_val: Int) {
     logger.debug("Incrementing pattern event counter")
     stateAgent send (oldState => {
       oldState.copy(oldState.counter.nextEventNumber)
+    })
+  }
+
+  def getEventCounterNumber(): StatePatternEventCounter = stateAgent.get()
+}
+
+class MemoryScale(system: ActorSystem) {
+  implicit val ex = system.dispatcher
+  private val logger = LoggerFactory.getLogger(this.getClass)
+
+  val stateAgent = Agent(new StatePatternEventCounter(0))
+
+  def incrementCounter: Unit = {
+    logger.debug("Incrementing memory scale counter")
+    stateAgent send (oldState => {
+      oldState.copy(oldState.counter + 1)
+    })
+  }
+
+  def decrementCounter: Unit = {
+    logger.debug("Decrementing memory scale counter")
+    stateAgent send (oldState => {
+      oldState.copy(oldState.counter - 1)
     })
   }
 

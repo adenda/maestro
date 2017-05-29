@@ -3,6 +3,7 @@ package com.adendamedia
 import com.typesafe.config.ConfigFactory
 import org.slf4j.LoggerFactory
 import akka.actor._
+import akka.pattern.ask
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.{Flow, Sink, Source}
 import com.adendamedia.kubernetes.Kubernetes
@@ -13,6 +14,7 @@ import com.lambdaworks.redis.pubsub.RedisPubSubAdapter
 import com.lambdaworks.redis.pubsub.api.sync.RedisPubSubCommands
 
 import com.adendamedia.metrics.{MemorySampler, RedisSample, RedisServerInfo}
+import com.adendamedia.kubernetes.Kubernetes
 
 object EventBus {
   def props(implicit redisConnection: StatefulRedisPubSubConnection[String, String],
@@ -26,6 +28,7 @@ object EventBus {
   case object GetPatternSample
 
   case object GetRedisMemoryUsage
+  case object GetRedisURIsFromKubernetes
 }
 
 class EventBus(implicit val redisConnection: StatefulRedisPubSubConnection[String, String],
@@ -37,6 +40,7 @@ class EventBus(implicit val redisConnection: StatefulRedisPubSubConnection[Strin
   import RedisSample._
   import RedisServerInfo._
   import MemorySampler._
+  import Kubernetes._
 
   import context.dispatcher
 
@@ -46,12 +50,9 @@ class EventBus(implicit val redisConnection: StatefulRedisPubSubConnection[Strin
 
   private val eventBus: ActorRef = context.self
 
-//  private val redisPubSubPatternSource = Source.actorPublisher[PubSubEvent](PubSubEvent.props(eventBus))
-//  private val ref = Flow[PubSubEvent]
-//    .to(Sink.ignore)
-//    .runWith(redisPubSubPatternSource)
+  private val redisServerInfo = context.system.actorOf(RedisServerInfo.props(eventBus))
 
-  private val redisServerInfo = context.system.actorOf(RedisServerInfo.props)
+  private val k8s = context.system.actorOf(Kubernetes.props)
 
   def receive = {
     case IncrementChannelCounter =>
@@ -69,63 +70,31 @@ class EventBus(implicit val redisConnection: StatefulRedisPubSubConnection[Strin
     case GetRedisMemoryUsage =>
       logger.debug("Event Bus getting redis server info")
       redisServerInfo.tell(GetRedisServerInfo, sender)
+    case GetRedisURIsFromKubernetes =>
+      logger.debug("Event Bus getting redis URIs")
+      k8s.tell(GetRedisURIs, sender)
   }
 
   def getRedisMemoryUsage(ref: ActorRef) = {
 
   }
 
-//  val listener = new RedisPubSubAdapter[String, String]() {
-//    override def message(channel: String, message: String): Unit = {
-//      ref ! PubSubEvent.Channel(channel, message)
-//    }
-//
-//    override def message(pattern: String, channel: String, message: String): Unit = {
-//      ref ! PubSubEvent.Pattern(pattern, channel, message)
-//    }
-//
-//  }
-
-//  redisConnection.addListener(listener)
-
-  // TO-DO: Use async api
-//  val sync: RedisPubSubCommands[String, String] = redisConnection.sync()
-
-  private val channel = redisConfig.getString("channel")
-  private val pattern = redisConfig.getString("pattern")
-
-//  sync.psubscribe(pattern)
-//
-//  sync.subscribe(channel)
-
   private val k8sConfig = ConfigFactory.load().getConfig("kubernetes")
-//  private val threshold: Int = k8sConfig.getInt("threshold")
-//  private val maxValue: Int = redisConfig.getInt("pub-sub.max-value")
 
-  private val k8sMaker = (f: ActorRefFactory) => f.actorOf(Props[Kubernetes])
+//  private val k8sMaker = (f: ActorRefFactory) => f.actorOf(Props[Kubernetes])
 
   private val memorySampler = context.system.actorOf(MemorySampler.props(eventBus))
 
-//  private val sampler = context.system.actorOf(Sampler.props(eventBus, k8sMaker, threshold, maxValue))
-
   private val period = kubernetesConfig.getInt("period")
 
-//  private val samplerType: Sample = ConfigFactory.load().getConfig("redis").getString("sampler.type") match {
-//    case "channel" => SampleChannel
-//    case "pattern" => SamplePattern
-//  }
-
+  // TODO: this should be called after initializing connections
   val cancellable = context.system.scheduler.schedule(0 milliseconds,
     period seconds,
     memorySampler,
     SampleMemory
   )
 
-  // scheduler
-//  val cancellable = context.system.scheduler.schedule(0 milliseconds,
-//    period seconds,
-//    sampler,
-//    samplerType
-//  )
+  // Initialize connections to redis nodes
+  context.system.scheduler.scheduleOnce(1 seconds, k8s, InitializeConnections)
 
 }

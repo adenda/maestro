@@ -16,6 +16,8 @@ object Kubernetes {
   case object ScaleUp
   case class ScaleUpSuccess(msg: String)
 
+  case object GetRedisURIs
+
   private val k8sConfig = ConfigFactory.load().getConfig("kubernetes")
   private val statefulSetName = k8sConfig.getString("statefulset-name")
   private val newNodesNumber = k8sConfig.getInt("new-nodes-number")
@@ -41,6 +43,18 @@ class Kubernetes extends Actor {
     case ScaleUpSuccess(msg) =>
       logger.info(msg)
       scaleCounter -= 1
+    case GetRedisURIs =>
+      logger.debug("WATTT")
+      val ref = sender
+      getRedisUris map(ref ! _)
+  }
+
+  private def getRedisUris: Future[List[String]] = {
+    val pods: Future[PodList] = k8s list[PodList] LabelSelector(LabelSelector.IsEqualRequirement("app", statefulSetName))
+    val result: Future[List[String]] = pods map { podList =>
+      for(pod <- podList) yield pod.status.get.podIP.get
+    }
+    result
   }
 
   private def scaleUp = {
@@ -50,6 +64,7 @@ class Kubernetes extends Actor {
     // IP addresses, and the expected new number of pods. The Conductor actor is responsible for awaiting the addition
     // of these new Redis nodes and then joining them to the Redis cluster.
     val resource: Future[StatefulSet] = k8s get[StatefulSet] statefulSetName
+    // TODO: parameterize label selector in application.conf
     val pods: Future[PodList] = k8s list[PodList] LabelSelector(LabelSelector.IsEqualRequirement("app", statefulSetName))
 
     val result: Future[(List[String], Int, StatefulSet)] = for {
