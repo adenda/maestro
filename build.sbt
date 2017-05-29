@@ -5,7 +5,7 @@ name := "maestro"
 organization := "com.adendamedia"
 
 //version := "0.1.4"
-version := "0.34-SNAPSHOT"
+version := "0.36-SNAPSHOT"
 
 scalaVersion := "2.11.8"
 
@@ -31,6 +31,7 @@ libraryDependencies ++= Seq(
   "com.github.kliewkliew" %% "cornucopia" % "0.23-SNAPSHOT",
   "com.typesafe" % "config" % "1.3.1",
   "biz.paluch.redis" % "lettuce" % "5.0.0.Beta1",
+  "com.adenda" %% "salad" % "SNAPSHOT-1",
   "com.typesafe.akka" %% "akka-actor" % akkaVersion,
   "com.typesafe.akka" %% "akka-agent" % akkaVersion,
   "com.typesafe.akka" %% "akka-stream" % akkaVersion,
