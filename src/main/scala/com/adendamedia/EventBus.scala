@@ -50,7 +50,9 @@ class EventBus(implicit val redisConnection: StatefulRedisPubSubConnection[Strin
 
   private val eventBus: ActorRef = context.self
 
-  private val redisServerInfo = context.system.actorOf(RedisServerInfo.props(eventBus))
+  private val memorySampler = context.system.actorOf(MemorySampler.props(eventBus))
+
+  private val redisServerInfo = context.system.actorOf(RedisServerInfo.props(eventBus, memorySampler))
 
   private val k8s = context.system.actorOf(Kubernetes.props)
 
@@ -83,18 +85,13 @@ class EventBus(implicit val redisConnection: StatefulRedisPubSubConnection[Strin
 
 //  private val k8sMaker = (f: ActorRefFactory) => f.actorOf(Props[Kubernetes])
 
-  private val memorySampler = context.system.actorOf(MemorySampler.props(eventBus))
 
   private val period = kubernetesConfig.getInt("period")
 
-  // TODO: this should be called after initializing connections
-  val cancellable = context.system.scheduler.schedule(0 milliseconds,
-    period seconds,
-    memorySampler,
-    SampleMemory
-  )
+
+  logger.debug("Scheduling to initialize connections")
 
   // Initialize connections to redis nodes
-  context.system.scheduler.scheduleOnce(1 seconds, k8s, InitializeConnections)
+  context.system.scheduler.scheduleOnce(1 seconds, redisServerInfo, InitializeConnections)
 
 }
