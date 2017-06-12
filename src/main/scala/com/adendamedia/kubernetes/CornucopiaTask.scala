@@ -27,8 +27,8 @@ class CornucopiaTask(cornucopiaRef: ActorRef, k8sController: ActorRef) extends A
     case AddSlaveTask(ip) =>
       logger.info(s"Telling Cornucopia to add slave node with IP '$ip'")
       cornucopiaRef ! Task("+slave", buildRedisUri(ip))
-    case Right(nodeType: String) =>
-      logger.info(s"Successfully added redis $nodeType node to cluster, telling Kubernetes controller")
+    case Right((nodeType: String, uri: String)) =>
+      logger.info(s"Successfully added redis $nodeType node to cluster with uri $uri, telling Kubernetes controller")
       val msg = if (nodeType == "master") "Successfully added master redis node and resharded cluster"
                 else "Successfully added slave redis node"
       k8sController ! ScaleUpSuccess(msg)

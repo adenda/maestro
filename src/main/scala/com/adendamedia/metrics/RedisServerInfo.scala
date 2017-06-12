@@ -85,6 +85,7 @@ class RedisServerInfo(eventBus: ActorRef, memorySampler: ActorRef) extends Actor
     }
 
     f map { _ =>
+      // TODO: Schedule this from event bus, simply send a message to event bus from here to do it
       val cancellable = context.system.scheduler.schedule(0 milliseconds,
         period seconds,
         memorySampler,
