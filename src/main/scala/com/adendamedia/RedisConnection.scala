@@ -6,8 +6,8 @@ import java.util.concurrent.TimeUnit
 import com.lambdaworks.redis.{ClientOptions, RedisClient}
 import com.lambdaworks.redis.codec.ByteArrayCodec
 import com.lambdaworks.redis.api.StatefulRedisConnection
-import com.github.kliewkliew.salad.SaladAPI
-import com.github.kliewkliew.salad.dressing.SaladServerCommandsAPI
+import com.adendamedia.salad.SaladAPI
+import com.adendamedia.salad.dressing.SaladServerCommandsAPI
 import com.lambdaworks.redis.api.async.RedisAsyncCommands
 
 object RedisConnection {

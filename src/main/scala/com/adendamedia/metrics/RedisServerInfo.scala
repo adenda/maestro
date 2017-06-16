@@ -17,8 +17,8 @@ import java.util.concurrent.TimeUnit
 import com.lambdaworks.redis.{ClientOptions, RedisClient}
 import com.lambdaworks.redis.codec.ByteArrayCodec
 import com.lambdaworks.redis.api.StatefulRedisConnection
-import com.github.kliewkliew.salad.SaladAPI
-import com.github.kliewkliew.salad.dressing.SaladServerCommandsAPI
+import com.adendamedia.salad.SaladAPI
+import com.adendamedia.salad.dressing.SaladServerCommandsAPI
 
 import com.adendamedia.RedisConnection._
 
@@ -62,7 +62,7 @@ class RedisServerInfo(eventBus: ActorRef, memorySampler: ActorRef) extends Actor
 
   private def getRedisServerInfo: Future[List[Int]] = {
     import SaladServerCommandsAPI.ServerInfo
-    import com.github.kliewkliew.salad.serde.StringSerdes._
+    import com.adendamedia.salad.serde.StringSerdes._
 
     val memory: List[Future[Int]] = connections.toList.map { case (uri, conn) =>
       logger.debug(s"Getting server info for redis node with uri '$uri'")
