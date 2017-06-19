@@ -3,9 +3,12 @@ package com.adendamedia
 import com.typesafe.config.ConfigFactory
 import org.slf4j.LoggerFactory
 import akka.actor._
+import akka.util.Timeout
+import akka.pattern.ask
 import com.adendamedia.metrics.MemoryScaleSampler
 
 import scala.concurrent.duration._
+import scala.concurrent.Future
 
 import com.adendamedia.metrics.{MemorySampler, RedisServerInfo}
 import com.adendamedia.kubernetes.Kubernetes
@@ -15,6 +18,9 @@ object EventBus {
 
   case object GetRedisMemoryUsage
   case object GetRedisURIsFromKubernetes
+  case object HasInitializedConnections
+  case class AddRedisNode(uri: String)
+  case object ScaleUpCluster
 }
 
 class EventBus(memoryScale: MemoryScale) extends Actor {
@@ -22,12 +28,17 @@ class EventBus(memoryScale: MemoryScale) extends Actor {
   import RedisServerInfo._
   import Kubernetes._
   import MemoryScaleSampler._
+  import MemorySampler._
 
   import context.dispatcher
 
   private val logger = LoggerFactory.getLogger(this.getClass)
+
   private val redisConfig = ConfigFactory.load().getConfig("redis")
-  private val kubernetesConfig = ConfigFactory.load().getConfig("kubernetes")
+  private val samplingInverval = redisConfig.getInt("sampler.interval")
+
+  private val k8sConfig = ConfigFactory.load().getConfig("kubernetes")
+  private val period = k8sConfig.getInt("period")
 
   private val eventBus: ActorRef = context.self
 
@@ -35,22 +46,51 @@ class EventBus(memoryScale: MemoryScale) extends Actor {
 
   private val redisServerInfo = context.system.actorOf(RedisServerInfo.props(eventBus, memorySampler))
 
-  private val k8s = context.system.actorOf(Kubernetes.props)
+  private val k8s = context.system.actorOf(Kubernetes.props(eventBus))
+
+  implicit val timeout = Timeout(20 seconds)
 
   def receive = {
     case GetRedisMemoryUsage =>
-      logger.debug("Event Bus getting redis server info")
+      logger.debug("Getting redis server info")
       redisServerInfo.tell(GetRedisServerInfo, sender)
     case GetRedisURIsFromKubernetes =>
-      logger.debug("Event Bus getting redis URIs")
+      logger.debug("Getting redis URIs")
       k8s.tell(GetRedisURIs, sender)
+    case HasInitializedConnections =>
+      logger.debug("Received message that connections have been made, now scheduling memory sampler")
+      scheduleMemorySampler
+    case AddRedisNode(uri: String) =>
+      logger.debug(s"Received message to add redis node to list of nodes")
+      initializeConnection(uri, sender)
+    case ScaleUpCluster =>
+      logger.debug(s"Received message to scale up the Redis cluster")
+      k8s ! ScaleUp
   }
 
-  private val samplingInverval = redisConfig.getInt("sampler.interval")
+  private val memoryScaleSampler = context.system.actorOf(MemoryScaleSampler.props(memoryScale, eventBus))
 
-  private val k8sMaker = (f: ActorRefFactory) => f.actorOf(Props[Kubernetes])
+  private def initializeConnection(uri: String, ref: ActorRef) = {
+    val f1: Future[String] = redisServerInfo.ask(InitializeConnection(uri)).mapTo[String]
+    val f2: Future[String] = memoryScaleSampler.ask(Reset).mapTo[String]
 
-  private val memoryScaleSampler = context.system.actorOf(MemoryScaleSampler.props(memoryScale, k8sMaker))
+    for {
+      uri: String <- f1
+      ok: String <- f2
+    } yield {
+      logger.debug(s"Added new redis node with uri $uri, and reset memory scale counter")
+      ref ! uri
+    }
+
+  }
+
+  private def scheduleMemorySampler = {
+    val cancellable = context.system.scheduler.schedule(0 milliseconds,
+      period seconds,
+      memorySampler,
+      SampleMemory
+    )
+  }
 
   logger.debug("Scheduling to initialize connections")
 
@@ -58,6 +98,7 @@ class EventBus(memoryScale: MemoryScale) extends Actor {
   context.system.scheduler.scheduleOnce(1 seconds, redisServerInfo, InitializeConnections)
 
   // Initialize memory scale sampler
+  // It's OK to schedule this early since it will just return 0
   val cancellable = context.system.scheduler.schedule(samplingInverval seconds,
     samplingInverval seconds,
     memoryScaleSampler,

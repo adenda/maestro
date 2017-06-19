@@ -1,21 +1,21 @@
-package com.adendamedia
-
-import akka.testkit.{TestActorRef, TestKit}
-import akka.actor.ActorSystem
-import akka.stream.ActorMaterializer
-import com.adendamedia.EventBus._
-import com.lambdaworks.redis.pubsub.StatefulRedisPubSubConnection
-import org.scalatest.{BeforeAndAfterAll, MustMatchers, WordSpecLike}
+//package com.adendamedia
+//
+//import akka.testkit.{TestActorRef, TestKit}
+//import akka.actor.ActorSystem
+//import akka.stream.ActorMaterializer
+//import com.adendamedia.EventBus._
+//import com.lambdaworks.redis.pubsub.StatefulRedisPubSubConnection
+//import org.scalatest.{BeforeAndAfterAll, MustMatchers, WordSpecLike}
 //import org.mockito.Mockito._
-import org.scalatest.mockito.MockitoSugar._
-
-class EventBusTest extends TestKit(ActorSystem("EventBusTest"))
-  with WordSpecLike with BeforeAndAfterAll with MustMatchers {
-  implicit val ec = system.dispatcher
-
-  override def afterAll(): Unit = {
-    system.terminate()
-  }
+//import org.scalatest.mockito.MockitoSugar._
+//
+//class EventBusTest extends TestKit(ActorSystem("EventBusTest"))
+//  with WordSpecLike with BeforeAndAfterAll with MustMatchers {
+//  implicit val ec = system.dispatcher
+//
+//  override def afterAll(): Unit = {
+//    system.terminate()
+//  }
 
 //  "ChannelEventCounter" must {
 //    "roll over to zero after passing max_val" in {
@@ -28,13 +28,13 @@ class EventBusTest extends TestKit(ActorSystem("EventBusTest"))
 //    }
 //  }
 
-  "EventBus" must {
-    "increment channel counter" in {
-      import EventBus._
-      implicit val max_val: Int = 5
-      implicit val mat: ActorMaterializer = ActorMaterializer.create(system)
-      implicit val counter = new ChannelEventCounter(system)
-      implicit val redisConnection: StatefulRedisPubSubConnection[String, String] = mock[StatefulRedisPubSubConnection[String, String]]
+//  "EventBus" must {
+//    "increment channel counter" in {
+//      import EventBus._
+//      implicit val max_val: Int = 5
+//      implicit val mat: ActorMaterializer = ActorMaterializer.create(system)
+//      implicit val counter = new ChannelEventCounter(system)
+//      implicit val redisConnection: StatefulRedisPubSubConnection[String, String] = mock[StatefulRedisPubSubConnection[String, String]]
 
 //      val props = EventBus.props(testActor)
 //      val props = EventBus.props
@@ -45,8 +45,8 @@ class EventBusTest extends TestKit(ActorSystem("EventBusTest"))
 //      expectMsg(IncrementCounter)
 //      counter.getEventCounterNumber() must be (new StateChannelEventCounter(1))
 //      bus.underlyingActor.counter.getEventCounterNumber() must be (new StateChannelEventCounter(1))
-      1 must be (1)
-    }
-  }
-
-}
+//      1 must be (1)
+//    }
+//  }
+//
+//}

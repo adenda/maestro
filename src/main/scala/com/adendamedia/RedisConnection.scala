@@ -8,7 +8,6 @@ import com.lambdaworks.redis.codec.ByteArrayCodec
 import com.lambdaworks.redis.api.StatefulRedisConnection
 import com.adendamedia.salad.SaladAPI
 import com.adendamedia.salad.dressing.SaladServerCommandsAPI
-import com.lambdaworks.redis.api.async.RedisAsyncCommands
 
 object RedisConnection {
   type Connection = StatefulRedisConnection[String,String]
@@ -25,8 +24,8 @@ object RedisConnection {
         .build())
       client.connect(codec)
     }
-    val lettuceAPI = connection map {
-      case c => c.asInstanceOf[Connection].async()
+    val lettuceAPI = connection map { c =>
+      c.asInstanceOf[Connection].async()
     }
     val serverCommandsApi = lettuceAPI.map { lettuce =>
       new SaladServerCommandsAPI(

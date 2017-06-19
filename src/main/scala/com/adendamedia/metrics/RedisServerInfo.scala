@@ -3,23 +3,17 @@ package com.adendamedia.metrics
 import akka.actor._
 import akka.pattern.ask
 import akka.util.Timeout
-
 import com.typesafe.config.ConfigFactory
+
 import scala.concurrent.duration._
 import scala.concurrent.Future
+import scala.concurrent.Future.fromTry
 import scala.util.Try
 import org.slf4j.LoggerFactory
 
 import scala.collection.mutable
 import com.adendamedia.EventBus
-import java.util.concurrent.TimeUnit
-
-import com.lambdaworks.redis.{ClientOptions, RedisClient}
-import com.lambdaworks.redis.codec.ByteArrayCodec
-import com.lambdaworks.redis.api.StatefulRedisConnection
-import com.adendamedia.salad.SaladAPI
 import com.adendamedia.salad.dressing.SaladServerCommandsAPI
-
 import com.adendamedia.RedisConnection._
 
 object RedisServerInfo {
@@ -27,13 +21,13 @@ object RedisServerInfo {
 
   case object GetRedisServerInfo
   case object InitializeConnections
+  case class InitializeConnection(uri: String)
 }
 
 class RedisServerInfo(eventBus: ActorRef, memorySampler: ActorRef) extends Actor {
   import RedisServerInfo._
-  import RedisSample._
   import EventBus._
-  import MemorySampler._
+  import ConnectionInitializer._
   import context.dispatcher
 
   private val k8sConfig = ConfigFactory.load().getConfig("kubernetes")
@@ -46,11 +40,12 @@ class RedisServerInfo(eventBus: ActorRef, memorySampler: ActorRef) extends Actor
 
   private val logger = LoggerFactory.getLogger(this.getClass)
 
+  private val connectionInitializer = context.system.actorOf(ConnectionInitializer.props(eventBus))
+
   implicit val timeout = Timeout(20 seconds)
 
   def receive = {
     case GetRedisServerInfo =>
-      // TODO: implement me, integrate with redis
       logger.debug("Called get redis server info")
       val ref = sender
       getRedisServerInfo map { memoryList: List[Int] =>
@@ -58,10 +53,31 @@ class RedisServerInfo(eventBus: ActorRef, memorySampler: ActorRef) extends Actor
         ref ! (memoryList, memoryList.size)
       }
     case InitializeConnections => initializeConnections
+    case InitializeConnection(uri) => initializeConnection(uri, sender)
+  }
+
+  private def initializeConnection(uri: String, ref: ActorRef) = {
+    val f: Future[(String, SaladServerCommandsAPI[_,_])] =
+      ask(connectionInitializer, Initialize(uri)).mapTo[(String, SaladServerCommandsAPI[_,_])]
+
+    f map { case (uri: String, conn: SaladServerCommandsAPI[_,_]) =>
+      connections.put(uri, conn)
+      ref ! uri
+    }
+  }
+
+  private def initializeConnections = {
+    val f: Future[mutable.Map[String, SaladServerCommandsAPI[_,_]]] =
+      ask(connectionInitializer, Initialize).mapTo[mutable.Map[String, SaladServerCommandsAPI[_,_]]]
+
+    // TODO: put this in state agent for thread safety
+    f map { conns =>
+      conns.foreach { case (uri, conn) => connections.put(uri, conn) }
+      eventBus ! HasInitializedConnections
+    }
   }
 
   private def getRedisServerInfo: Future[List[Int]] = {
-    import SaladServerCommandsAPI.ServerInfo
     import com.adendamedia.salad.serde.StringSerdes._
 
     val memory: List[Future[Int]] = connections.toList.map { case (uri, conn) =>
@@ -72,42 +88,64 @@ class RedisServerInfo(eventBus: ActorRef, memorySampler: ActorRef) extends Actor
     Future.sequence(memory)
   }
 
-  // TODO: Separate this to a child actor (error kernel pattern)
-  private def initializeConnections: Future[Unit] = {
+}
+
+object ConnectionInitializer {
+  def props(eventBus: ActorRef): Props = Props(new ConnectionInitializer(eventBus))
+
+  case object Initialize
+  case class Initialize(uri: String)
+}
+
+class ConnectionInitializer(eventBus: ActorRef) extends Actor {
+  import ConnectionInitializer._
+  import EventBus._
+  import context.dispatcher
+
+  private val logger = LoggerFactory.getLogger(this.getClass)
+
+  implicit val timeout = Timeout(20 seconds)
+
+  private val k8sConfig = ConfigFactory.load().getConfig("kubernetes")
+
+  private val period = k8sConfig.getInt("period")
+
+  def receive = {
+    case Initialize => initializeConnections(sender)
+    case Initialize(uri) => initializeConnection(uri, sender)
+  }
+
+  private def initializeConnections(ref: ActorRef): Future[Unit] = {
     logger.info("Initializing connections to Redis nodes")
     val f: Future[List[String]] = ask(eventBus, GetRedisURIsFromKubernetes).mapTo[List[String]]
 
+    val connections = Map.empty[String, SaladServerCommandsAPI[_,_]]
+
     f map { uris =>
-      uris map { uri =>
-        logger.info(s"Initialize connection for uri: $uri")
-        initializeConnectionForUri(uri)
-      }
-    }
-
-    f map { _ =>
-      // TODO: Schedule this from event bus, simply send a message to event bus from here to do it
-      val cancellable = context.system.scheduler.schedule(0 milliseconds,
-        period seconds,
-        memorySampler,
-        SampleMemory
-      )
-    }
-
+      uris.foldLeft(connections)((conn, uri) => conn + (uri -> initializeConnectionForUri(uri).get))
+    } map(ref ! _)
   }
 
-  // TODO: Separate this to a child actor (error kernel)
-  private def initializeConnectionForUri(uri: String) = {
-    // TODO: handle better errors or error kernel pattern this and let exceptions happen
-    val api = createConnection(uri)
+  private def initializeConnection(uri: String, ref: ActorRef): Future[Unit] = {
+    logger.info(s"Initializing connection to Redis node with uri $uri")
 
-    if (api.isFailure)
-      logger.error("REDIS IS DOWN")
-    else {
-      logger.debug(s"Created connection to '$uri'")
-      api map { c =>
-        logger.debug(s"Adding connection to connections collection for '$uri'")
-        connections put(uri, c)
-      }
+    val connections = Map.empty[String, SaladServerCommandsAPI[_,_]]
+
+    val init = initializeConnectionForUri(uri) map { conn: SaladServerCommandsAPI[_,_] =>
+      ref ! connections + (uri -> conn)
+    }
+
+    fromTry(init)
+  }
+
+  private def initializeConnectionForUri(uri: String): Try[SaladServerCommandsAPI[_,_]] = {
+    createConnection(uri) map { conn: SaladServerCommandsAPI[_,_] =>
+      logger.debug(s"Adding connection to connections collection for '$uri'")
+      conn
+    } recover { case e: Throwable =>
+      logger.error(s"Failed to create connection to uri $uri")
+      throw e
     }
   }
+
 }

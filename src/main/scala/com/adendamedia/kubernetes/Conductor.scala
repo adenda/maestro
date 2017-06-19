@@ -4,8 +4,7 @@ import akka.actor._
 import scala.concurrent.duration._
 import com.typesafe.config.ConfigFactory
 
-import com.github.kliewkliew.cornucopia.Library
-import com.github.kliewkliew.cornucopia.actors.CornucopiaSource.Task
+import com.adendamedia.cornucopia.Library
 import skuber._
 import skuber.json.format._
 import scala.concurrent.Future

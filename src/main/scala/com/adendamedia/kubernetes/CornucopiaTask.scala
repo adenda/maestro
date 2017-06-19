@@ -2,7 +2,7 @@ package com.adendamedia.kubernetes
 
 import akka.actor._
 import org.slf4j.LoggerFactory
-import com.github.kliewkliew.cornucopia.actors.CornucopiaSource._
+import com.adendamedia.cornucopia.actors.CornucopiaSource._
 
 object CornucopiaTask {
   def props(cornucopiaRef: ActorRef, k8sController: ActorRef) = Props(new CornucopiaTask(cornucopiaRef, k8sController))
@@ -31,7 +31,7 @@ class CornucopiaTask(cornucopiaRef: ActorRef, k8sController: ActorRef) extends A
       logger.info(s"Successfully added redis $nodeType node to cluster with uri $uri, telling Kubernetes controller")
       val msg = if (nodeType == "master") "Successfully added master redis node and resharded cluster"
                 else "Successfully added slave redis node"
-      k8sController ! ScaleUpSuccess(msg)
+      k8sController ! ScaleUpSuccess(nodeType, uri)
     case Left(e: String) =>
       logger.error(s"Failed trying to add redis node to cluster: $e")
       // TO-DO: throw exception and implement some type of supervision strategy

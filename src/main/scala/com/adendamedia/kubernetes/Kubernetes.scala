@@ -1,20 +1,25 @@
 package com.adendamedia.kubernetes
 
 import akka.actor._
+import akka.pattern.ask
+import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
 import org.slf4j.LoggerFactory
 import skuber._
 import skuber.apps.{StatefulSet, _}
 import skuber.json.apps.format._
 import skuber.json.format._
+import com.adendamedia.EventBus
 
 import scala.concurrent.Future
+import scala.concurrent.duration._
 
 object Kubernetes {
-  def props = Props(new Kubernetes)
+  def props(eventBus: ActorRef): Props = Props(new Kubernetes(eventBus))
 
   case object ScaleUp
-  case class ScaleUpSuccess(msg: String)
+//  case class ScaleUpSuccess(msg: String)
+  case class ScaleUpSuccess(nodeType: String, uri: String)
 
   case object GetRedisURIs
 
@@ -23,9 +28,10 @@ object Kubernetes {
   private val newNodesNumber = k8sConfig.getInt("new-nodes-number")
 }
 
-class Kubernetes extends Actor {
+class Kubernetes(eventBus: ActorRef) extends Actor {
   import Conductor._
   import Kubernetes._
+  import EventBus._
 
   import scala.concurrent.ExecutionContext.Implicits.global
   private val k8s = k8sInit
@@ -36,17 +42,32 @@ class Kubernetes extends Actor {
 
   private var scaleCounter = 0
 
+  // TODO: parameterize in application.conf
+  implicit val timeout = Timeout(20 seconds)
+
   def receive = {
     case ScaleUp =>
       if (scaleCounter == 0) scaleUp
       else logger.warn(s"Kubernetes actor asked to scale, but scale is already underway, so ignoring scale up request for now")
-    case ScaleUpSuccess(msg) =>
-      logger.info(msg)
-      scaleCounter -= 1
+    case ScaleUpSuccess(nodeType, uri) =>
+      logger.debug(s"Received scale up success for $nodeType node with uri $uri")
+      handleScaleUpSuccess(uri)
     case GetRedisURIs =>
-      logger.debug("WATTT")
+      logger.debug("Asked for redis URIs")
       val ref = sender
       getRedisUris map(ref ! _)
+  }
+
+  private def handleScaleUpSuccess(uri: String) = {
+    // We should first add the new uri to the list of connections that are sampled, using an ask so we can wait for it
+    // to be added using a future. Then we should reset the memory scale sampler. Then we should finally decrement the
+    // scale counter in this class
+    val f: Future[String] = eventBus.ask(AddRedisNode(uri)).mapTo[String]
+
+    f map { uri: String =>
+      logger.info(s"Succcessfully added new Redis node with uri '$uri' to list of sampled nodes")
+      scaleCounter -= 1
+    }
   }
 
   private def getRedisUris: Future[List[String]] = {

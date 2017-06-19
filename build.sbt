@@ -5,7 +5,7 @@ name := "maestro"
 organization := "com.adendamedia"
 
 //version := "0.1.4"
-version := "0.53-SNAPSHOT"
+version := "0.54-SNAPSHOT"
 
 scalaVersion := "2.11.8"
 
@@ -28,7 +28,7 @@ val testDependencies = Seq(
 
 libraryDependencies ++= Seq(
   "com.adendamedia" %% "salad" % "0.9.0",
-  "com.github.kliewkliew" %% "cornucopia" % "0.31-SNAPSHOT",
+  "com.adendamedia" %% "cornucopia" % "0.5.0",
   "com.typesafe" % "config" % "1.3.1",
   "biz.paluch.redis" % "lettuce" % "5.0.0.Beta1",
   "com.typesafe.akka" %% "akka-actor" % akkaVersion,

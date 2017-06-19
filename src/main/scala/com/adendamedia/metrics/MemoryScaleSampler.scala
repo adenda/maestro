@@ -3,29 +3,32 @@ package com.adendamedia.metrics
 import com.adendamedia.MemoryScale
 import org.slf4j.LoggerFactory
 import com.typesafe.config.ConfigFactory
-import com.adendamedia.kubernetes.Kubernetes
+import com.adendamedia.EventBus
 import akka.actor._
 
 object MemoryScaleSampler {
-  def props(memoryScale: MemoryScale, k8sMaker: ActorRefFactory => ActorRef): Props =
-    Props(new MemoryScaleSampler(memoryScale, k8sMaker: ActorRefFactory => ActorRef))
+  def props(memoryScale: MemoryScale, eventBus: ActorRef): Props =
+    Props(new MemoryScaleSampler(memoryScale, eventBus: ActorRef))
 
   case object Sample
+  case object Reset
 }
 
-class MemoryScaleSampler(memoryScale: MemoryScale, k8sMaker: ActorRefFactory => ActorRef) extends Actor {
+class MemoryScaleSampler(memoryScale: MemoryScale, eventBus: ActorRef) extends Actor {
   import MemoryScaleSampler._
-  import Kubernetes._
+  import EventBus._
 
   private val redisConfig = ConfigFactory.load().getConfig("redis")
   private val scaleUpThreshold = redisConfig.getInt("sampler.scaleup.threshold")
 
   private val logger = LoggerFactory.getLogger(this.getClass)
 
-  private val k8s = k8sMaker(context)
-
   def receive = {
     case Sample => sample
+    case Reset =>
+      memoryScale.resetCounter
+      logger.debug(s"Reset memory scale counter")
+      sender ! "OK"
   }
 
   private def sample = {
@@ -34,7 +37,7 @@ class MemoryScaleSampler(memoryScale: MemoryScale, k8sMaker: ActorRefFactory => 
 
     if (count >= scaleUpThreshold) {
       logger.info(s"Memory scale value is $count, which is greater than or equal to scale-up threshold=$scaleUpThreshold: Scaling up cluster now")
-      k8s ! ScaleUp
+      eventBus ! ScaleUpCluster
     } else {
       logger.info(s"Memory scale value is $count, which is less than scale-up threshold=$scaleUpThreshold: Do nothing")
     }

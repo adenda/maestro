@@ -38,13 +38,13 @@ class MemorySampler(eventBus: ActorRef, memoryScale: MemoryScale) extends Actor 
   }
 
   private def sampleMemory = {
-    logger.debug("Called Channel Sample")
+    logger.debug("Sampling memory")
     val f: Future[RedisSample] = ask(eventBus, GetRedisMemoryUsage).mapTo[RedisSample]
     f map handleResponse
   }
 
   private def handleResponse(sample: RedisSample) = {
-    logger.info(s"got sample: $sample")
+    logger.debug(s"got sample: $sample")
 
     // Take the average across all samples and if it's beyond maxMemory, then increment the maxMemory counter
     val averageMemory = (sample._1.sum.toFloat / sample._2).toInt
