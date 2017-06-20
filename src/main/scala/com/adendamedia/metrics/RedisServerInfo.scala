@@ -42,7 +42,8 @@ class RedisServerInfo(eventBus: ActorRef, memorySampler: ActorRef) extends Actor
 
   private val connectionInitializer = context.system.actorOf(ConnectionInitializer.props(eventBus))
 
-  implicit val timeout = Timeout(20 seconds)
+  // TODO: parameterize in application.conf
+  implicit val timeout = Timeout(60 seconds)
 
   def receive = {
     case GetRedisServerInfo =>
@@ -56,23 +57,32 @@ class RedisServerInfo(eventBus: ActorRef, memorySampler: ActorRef) extends Actor
     case InitializeConnection(uri) => initializeConnection(uri, sender)
   }
 
+  private def getRedisUris: String = {
+    connections.keys.mkString(", ")
+  }
+
   private def initializeConnection(uri: String, ref: ActorRef) = {
     val f: Future[(String, SaladServerCommandsAPI[_,_])] =
-      ask(connectionInitializer, Initialize(uri)).mapTo[(String, SaladServerCommandsAPI[_,_])]
+      ask(connectionInitializer, InitializeOne(uri)).mapTo[(String, SaladServerCommandsAPI[_,_])]
 
     f map { case (uri: String, conn: SaladServerCommandsAPI[_,_]) =>
+      logger.debug(s"Adding initialized connections to the list of connections for the memory sampler")
+      // TODO: Put in state agent
       connections.put(uri, conn)
+      logger.info(s"Memory will now be sampled from the following redis nodes: $getRedisUris")
       ref ! uri
     }
   }
 
   private def initializeConnections = {
-    val f: Future[mutable.Map[String, SaladServerCommandsAPI[_,_]]] =
-      ask(connectionInitializer, Initialize).mapTo[mutable.Map[String, SaladServerCommandsAPI[_,_]]]
+    val f: Future[Map[String, SaladServerCommandsAPI[_,_]]] =
+      ask(connectionInitializer, Initialize).mapTo[Map[String, SaladServerCommandsAPI[_,_]]]
 
-    // TODO: put this in state agent for thread safety
     f map { conns =>
+      logger.debug(s"Adding initialized connections to the list of connections for the memory sampler")
+      // TODO: again, put this in state agent for thread safety
       conns.foreach { case (uri, conn) => connections.put(uri, conn) }
+      logger.info(s"Memory will now be sampled from the following redis nodes: $getRedisUris")
       eventBus ! HasInitializedConnections
     }
   }
@@ -94,7 +104,7 @@ object ConnectionInitializer {
   def props(eventBus: ActorRef): Props = Props(new ConnectionInitializer(eventBus))
 
   case object Initialize
-  case class Initialize(uri: String)
+  case class InitializeOne(uri: String)
 }
 
 class ConnectionInitializer(eventBus: ActorRef) extends Actor {
@@ -112,7 +122,7 @@ class ConnectionInitializer(eventBus: ActorRef) extends Actor {
 
   def receive = {
     case Initialize => initializeConnections(sender)
-    case Initialize(uri) => initializeConnection(uri, sender)
+    case InitializeOne(uri) => initializeConnection(uri, sender)
   }
 
   private def initializeConnections(ref: ActorRef): Future[Unit] = {
@@ -129,10 +139,9 @@ class ConnectionInitializer(eventBus: ActorRef) extends Actor {
   private def initializeConnection(uri: String, ref: ActorRef): Future[Unit] = {
     logger.info(s"Initializing connection to Redis node with uri $uri")
 
-    val connections = Map.empty[String, SaladServerCommandsAPI[_,_]]
-
     val init = initializeConnectionForUri(uri) map { conn: SaladServerCommandsAPI[_,_] =>
-      ref ! connections + (uri -> conn)
+      logger.debug(s"Initialized new Redis connection for uri $uri")
+      ref ! (uri, conn)
     }
 
     fromTry(init)
