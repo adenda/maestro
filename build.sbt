@@ -5,7 +5,7 @@ name := "maestro"
 organization := "com.adendamedia"
 
 //version := "0.1.4"
-version := "0.54-SNAPSHOT"
+version := "0.55-SNAPSHOT"
 
 scalaVersion := "2.11.8"
 

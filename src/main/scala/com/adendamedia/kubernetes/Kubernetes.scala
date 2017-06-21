@@ -18,7 +18,6 @@ object Kubernetes {
   def props(eventBus: ActorRef): Props = Props(new Kubernetes(eventBus))
 
   case object ScaleUp
-//  case class ScaleUpSuccess(msg: String)
   case class ScaleUpSuccess(nodeType: String, uri: String)
 
   case object GetRedisURIs
@@ -33,21 +32,25 @@ class Kubernetes(eventBus: ActorRef) extends Actor {
   import Kubernetes._
   import EventBus._
 
-  import scala.concurrent.ExecutionContext.Implicits.global
+  private val replicaCounter = new StatefulsetReplicaCounterAgent(context.system)
+
+  private val scaleMagnitudeCounter = new ScaleCounterAgent(context.system)
+
+  import scala.concurrent.ExecutionContext.Implicits.global // TODO: use actor system context?
+
   private val k8s = k8sInit
 
   private val logger = LoggerFactory.getLogger(this.getClass)
 
-  private val conductor = context.system.actorOf(Conductor.props(self))
+  private val conductor = context.system.actorOf(Conductor.props(self, replicaCounter))
 
   private var scaleCounter = 0
 
-  // TODO: parameterize in application.conf
-  implicit val timeout = Timeout(20 seconds)
+  implicit val timeout = Timeout(60 seconds) // TODO: parameterize in application.conf
 
   def receive = {
     case ScaleUp =>
-      if (scaleCounter == 0) scaleUp
+      if (scaleMagnitudeCounter.getScaleMagnitude().counter == 0) scaleUp
       else logger.warn(s"Kubernetes actor asked to scale, but scale is already underway, so ignoring scale up request for now")
     case ScaleUpSuccess(nodeType, uri) =>
       logger.debug(s"Received scale up success for $nodeType node with uri $uri")
@@ -66,11 +69,12 @@ class Kubernetes(eventBus: ActorRef) extends Actor {
 
     f map { uri: String =>
       logger.info(s"Succcessfully added new Redis node with uri '$uri' to list of sampled nodes")
-      scaleCounter -= 1
+      scaleMagnitudeCounter.adjustScale(-1)
     }
   }
 
   private def getRedisUris: Future[List[String]] = {
+    // TODO: parameterize label selector in application.conf
     val pods: Future[PodList] = k8s list[PodList] LabelSelector(LabelSelector.IsEqualRequirement("app", statefulSetName))
     val result: Future[List[String]] = pods map { podList =>
       for(pod <- podList) yield pod.status.get.podIP.get
@@ -79,7 +83,8 @@ class Kubernetes(eventBus: ActorRef) extends Actor {
   }
 
   private def scaleUp = {
-    scaleCounter = newNodesNumber
+    scaleMagnitudeCounter.adjustScale(newNodesNumber)
+
     // First get the number of replicas for the stateful set. Second, get the list of current pods in the statefulset.
     // Third, message the Conductor child actor with the current number of pods and the list of the current pod cluster
     // IP addresses, and the expected new number of pods. The Conductor actor is responsible for awaiting the addition
@@ -112,9 +117,11 @@ class Kubernetes(eventBus: ActorRef) extends Actor {
       newSS = ss.copy(spec = Some(ss.spec.get.copy(replicas = newReplicas)))
       _ <- k8s update newSS
     } yield {
+      replicaCounter.setReplicaNumber(currentReplicas)
+
       // ask Conductor child actor to add expected new redis nodes to cluster. Scale up messages will be ignored until
       // this actor is informed by its descendants that resharding was successful using `ScaleUpSuccess` message.
-      conductor ! Update(currentRedisIps, currentReplicas, newReplicas)
+      conductor ! Update(currentRedisIps, newReplicas)
     }
 
     updateResult recoverWith {
