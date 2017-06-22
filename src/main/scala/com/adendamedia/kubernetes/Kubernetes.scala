@@ -86,9 +86,9 @@ class Kubernetes(eventBus: ActorRef) extends Actor {
     scaleMagnitudeCounter.adjustScale(newNodesNumber)
 
     // First get the number of replicas for the stateful set. Second, get the list of current pods in the statefulset.
-    // Third, message the Conductor child actor with the current number of pods and the list of the current pod cluster
-    // IP addresses, and the expected new number of pods. The Conductor actor is responsible for awaiting the addition
-    // of these new Redis nodes and then joining them to the Redis cluster.
+    // Third, message the Conductor child actor with the list of the current Redis pod cluster IP addresses, and the
+    // expected new number of pods. The Conductor actor is responsible for awaiting the addition of these new Redis
+    // nodes and then joining them to the Redis cluster.
     val resource: Future[StatefulSet] = k8s get[StatefulSet] statefulSetName
     // TODO: parameterize label selector in application.conf
     val pods: Future[PodList] = k8s list[PodList] LabelSelector(LabelSelector.IsEqualRequirement("app", statefulSetName))

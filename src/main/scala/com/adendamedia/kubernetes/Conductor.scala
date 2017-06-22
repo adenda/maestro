@@ -47,10 +47,9 @@ class Conductor(k8sController: ActorRef, replicaCounter: StatefulsetReplicaCount
 
   def receive = {
     case Update(currentNodeIps: List[String], newReplicaCount) =>
-      logger.info(s"Polling redis cluster for new nodes to join: current replica count: ${replicaCounter.getReplicaCount().counter}, new replica count: $newReplicaCount")
       system.scheduler.scheduleOnce(pollingPeriodSeconds, self, Poll(currentNodeIps, newReplicaCount))
     case Poll(currentNodeIps: List[String], newReplicaCount) =>
-      logger.info(s"Polling redis cluster again for new nodes to join: current replica count: ${replicaCounter.getReplicaCount().counter}, new replica count: $newReplicaCount")
+      logger.info(s"Polling redis cluster for new nodes to join: current replica count=${replicaCounter.getReplicaCount().counter}, new replica count=$newReplicaCount")
       pollForNewPods(currentNodeIps, newReplicaCount)
   }
 
