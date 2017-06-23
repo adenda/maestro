@@ -27,9 +27,9 @@ val testDependencies = Seq(
 ).map(_.exclude("ch.qos.logback", "logback-classic"))
 
 libraryDependencies ++= Seq(
-  "com.adendamedia" %% "salad" % "0.9.0",
+  "com.adendamedia" %% "salad" % "0.9.2",
 //  "com.adendamedia" %% "cornucopia" % "0.5.0",
-  "com.adendamedia" %% "cornucopia" % "0.42-SNAPSHOT",
+  "com.adendamedia" %% "cornucopia" % "0.44-SNAPSHOT",
   "com.typesafe" % "config" % "1.3.1",
   "biz.paluch.redis" % "lettuce" % "5.0.0.Beta1",
   "com.typesafe.akka" %% "akka-actor" % akkaVersion,
