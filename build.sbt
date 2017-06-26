@@ -13,10 +13,10 @@ enablePlugins(JavaAppPackaging, DockerPlugin)
 
 resolvers += "Sonatype Releases" at "https://oss.sonatype.org/service/repositories/releases/"
 
-//resolvers += Resolver.url(
-//  "bintray-skuber",
-//  url("http://dl.bintray.com/oriordan/skuber"))(
-//  Resolver.ivyStylePatterns)
+resolvers += Resolver.url(
+  "bintray-skuber",
+  url("http://dl.bintray.com/oriordan/skuber"))(
+  Resolver.ivyStylePatterns)
 
 val akkaVersion = "2.4.17"
 
@@ -28,14 +28,15 @@ val testDependencies = Seq(
 
 libraryDependencies ++= Seq(
   "com.adendamedia" %% "salad" % "0.9.2",
-//  "com.adendamedia" %% "cornucopia" % "0.5.0",
-  "com.adendamedia" %% "cornucopia" % "0.44-SNAPSHOT",
+  "com.adendamedia" %% "cornucopia" % "0.5.1",
+//  "com.adendamedia" %% "cornucopia" % "0.44-SNAPSHOT",
   "com.typesafe" % "config" % "1.3.1",
   "biz.paluch.redis" % "lettuce" % "5.0.0.Beta1",
   "com.typesafe.akka" %% "akka-actor" % akkaVersion,
   "com.typesafe.akka" %% "akka-agent" % akkaVersion,
   "com.typesafe.akka" %% "akka-stream" % akkaVersion,
-  "io.doriordan" %% "skuber" % "0.5-SNAPSHOT",
+//  "io.doriordan" %% "skuber" % "0.5-SNAPSHOT",
+  "io.doriordan" %% "skuber" % "1.3.0",
   "org.slf4j" % "slf4j-log4j12" % "1.7.22"
 ).map(_.exclude("ch.qos.logback", "logback-classic")) ++ testDependencies
 
