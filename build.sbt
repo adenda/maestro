@@ -5,7 +5,7 @@ name := "maestro"
 organization := "com.adendamedia"
 
 //version := "0.1.4"
-version := "0.58-SNAPSHOT"
+version := "0.59-SNAPSHOT"
 
 scalaVersion := "2.11.8"
 
@@ -36,7 +36,8 @@ libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-agent" % akkaVersion,
   "com.typesafe.akka" %% "akka-stream" % akkaVersion,
 //  "io.doriordan" %% "skuber" % "0.5-SNAPSHOT",
-  "io.doriordan" %% "skuber" % "1.3.0",
+  "io.doriordan" %% "skuber" % "0.7-SNAPSHOT",
+//  "io.doriordan" %% "skuber" % "1.3.0",
   "org.slf4j" % "slf4j-log4j12" % "1.7.22"
 ).map(_.exclude("ch.qos.logback", "logback-classic")) ++ testDependencies
 
