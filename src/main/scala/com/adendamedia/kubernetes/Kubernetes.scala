@@ -96,7 +96,7 @@ class Kubernetes(eventBus: ActorRef) extends Actor {
     val result: Future[(List[String], Int, StatefulSet)] = for {
       r <- resource
       p <- pods
-      currentReplicas = r.spec.get.replicas
+      currentReplicas = r.spec.get.replicas.get
     } yield {
       val currentRedisIps = p.items map {
         pod => pod.status.get.podIP.get
@@ -114,7 +114,7 @@ class Kubernetes(eventBus: ActorRef) extends Actor {
     val updateResult = for {
       (currentRedisIps, currentReplicas, ss) <- result
       newReplicas = currentReplicas + newNodesNumber
-      newSS = ss.copy(spec = Some(ss.spec.get.copy(replicas = newReplicas)))
+      newSS = ss.copy(spec = Some(ss.spec.get.copy(replicas = Some(newReplicas))))
       _ <- k8s update newSS
     } yield {
       replicaCounter.setReplicaNumber(currentReplicas)
