@@ -2,17 +2,19 @@ package com.adendamedia.kubernetes
 
 import akka.actor._
 import org.slf4j.LoggerFactory
-import com.adendamedia.cornucopia.actors.CornucopiaSource._
+import com.lambdaworks.redis.RedisURI
+import com.adendamedia.cornucopia.actors.Gatekeeper.{Task, TaskAccepted, TaskDenied}
 
 object CornucopiaTask {
-  def props(cornucopiaRef: ActorRef, k8sController: ActorRef) = Props(new CornucopiaTask(cornucopiaRef, k8sController))
+  def props(cornucopiaRef: ActorRef, k8sController: ActorRef, cluster: ActorRef) =
+    Props(new CornucopiaTask(cornucopiaRef, k8sController, cluster))
 
   trait Task
   case class AddMasterTask(ip: String) extends Task
   case class AddSlaveTask(ip: String) extends Task
 }
 
-class CornucopiaTask(cornucopiaRef: ActorRef, k8sController: ActorRef) extends Actor {
+class CornucopiaTask(cornucopiaRef: ActorRef, k8sController: ActorRef, cluster: ActorRef) extends Actor {
   import CornucopiaTask._
   import Kubernetes._
 
@@ -27,13 +29,15 @@ class CornucopiaTask(cornucopiaRef: ActorRef, k8sController: ActorRef) extends A
     case AddSlaveTask(ip) =>
       logger.info(s"Telling Cornucopia to add slave node with IP '$ip'")
       cornucopiaRef ! Task("+slave", buildRedisUri(ip))
-    case Right((nodeType: String, uri: String)) =>
-      logger.info(s"Successfully added redis $nodeType node to cluster with uri $uri, telling Kubernetes controller")
-      val msg = if (nodeType == "master") "Successfully added master redis node and resharded cluster"
-                else "Successfully added slave redis node"
-      k8sController ! ScaleUpSuccess(nodeType, uri)
+    case Right((taskKey: String, uri: RedisURI)) =>
+      logger.info(s"Task '$taskKey' success, processing redis node $uri, telling Kubernetes controller")
+      k8sController ! ScaleUpSuccess(taskKey, uri.toURI.toString)
     case Left(e: String) =>
       logger.error(s"Failed trying to add redis node to cluster: $e")
       // TO-DO: throw exception and implement some type of supervision strategy
+    case TaskAccepted =>
+      cluster ! TaskAccepted
+    case TaskDenied =>
+      cluster ! TaskDenied
   }
 }

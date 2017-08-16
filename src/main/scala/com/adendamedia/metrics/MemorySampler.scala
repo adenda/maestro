@@ -28,6 +28,7 @@ class MemorySampler(eventBus: ActorRef, memoryScale: MemoryScale) extends Actor 
 
   private val redisConfig = ConfigFactory.load().getConfig("redis")
   private val maxMemory = redisConfig.getInt("sampler.max.memory")
+  private val minMemory = redisConfig.getInt("sampler.min.memory")
 
   private val logger = LoggerFactory.getLogger(this.getClass)
 

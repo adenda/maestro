@@ -18,7 +18,7 @@ object Kubernetes {
   def props(eventBus: ActorRef): Props = Props(new Kubernetes(eventBus))
 
   case object ScaleUp
-  case class ScaleUpSuccess(nodeType: String, uri: String)
+  case class ScaleUpSuccess(taskKey: String, uri: String)
 
   case object GetRedisURIs
 
@@ -52,8 +52,8 @@ class Kubernetes(eventBus: ActorRef) extends Actor {
     case ScaleUp =>
       if (scaleMagnitudeCounter.getScaleMagnitude().counter == 0) scaleUp
       else logger.warn(s"Kubernetes actor asked to scale, but scale is already underway, so ignoring scale up request for now")
-    case ScaleUpSuccess(nodeType, uri) =>
-      logger.debug(s"Received scale up success for $nodeType node with uri $uri")
+    case ScaleUpSuccess(taskKey, uri) =>
+      logger.info(s"Received scale up success for task $taskKey node with uri $uri")
       handleScaleUpSuccess(uri)
     case GetRedisURIs =>
       logger.debug("Asked for redis URIs")

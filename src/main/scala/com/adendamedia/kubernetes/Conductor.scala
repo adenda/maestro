@@ -37,7 +37,8 @@ class Conductor(k8sController: ActorRef, replicaCounter: StatefulsetReplicaCount
 
   private val pollingPeriodSeconds = pollingPeriod seconds
 
-  private val cluster = context.system.actorOf(Cluster.props(Library.ref, k8sController))
+  private val library = new Library
+  private val cluster = context.system.actorOf(Cluster.props(library.ref, k8sController))
 
   // TODO: We might want to have a timeout period after which the conductor actor simply fails
 

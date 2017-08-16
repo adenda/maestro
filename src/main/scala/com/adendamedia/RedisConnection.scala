@@ -14,9 +14,8 @@ object RedisConnection {
   val codec = ByteArrayCodec.INSTANCE
 
   def createConnection(uri: String) = {
-    val redisUri = "redis://" + uri
     val connection = Try {
-      val client = RedisClient.create(redisUri)
+      val client = RedisClient.create(uri)
       client.setDefaultTimeout(1000, TimeUnit.MILLISECONDS)
       client.setOptions(ClientOptions.builder()
         .cancelCommandsOnReconnectFailure(true)
