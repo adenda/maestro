@@ -13,7 +13,6 @@ import com.adendamedia.EventBus
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
-import scala.util.Try
 
 object Kubernetes {
   def props(eventBus: ActorRef): Props = Props(new Kubernetes(eventBus))
@@ -51,7 +50,7 @@ class Kubernetes(eventBus: ActorRef) extends Actor with ActorLogging {
 
   private val conductor = context.system.actorOf(Conductor.props(self, replicaCounter), Conductor.name)
 
-  private var scaleCounter = 0
+  private var isScalingDown = false
 
   implicit val timeout = Timeout(60 seconds) // TODO: parameterize in application.conf
 
@@ -63,7 +62,7 @@ class Kubernetes(eventBus: ActorRef) extends Actor with ActorLogging {
       log.info(s"Received scale up success for task $taskKey node with uri $uri")
       handleScaleUpSuccess(uri)
     case ScaleDown =>
-      if (scaleMagnitudeCounter.getScaleMagnitude().counter == 0) scaleDown
+      if (scaleMagnitudeCounter.getScaleMagnitude().counter == 0 && !isScalingDown) scaleDown
       else log.warning(s"Kubernetes actor asked to scale down, but scale is already underway, so ignoring scale down request for now")
     case ScaleDownSuccess(taskKey, uri) =>
       log.info(s"Received scale down success for task $taskKey node with uri $uri")
@@ -87,15 +86,13 @@ class Kubernetes(eventBus: ActorRef) extends Actor with ActorLogging {
   }
 
   private def handleScaleDownSuccess(uri: String) = {
-
+    scaleMagnitudeCounter.adjustScale(-1)
     val f: Future[String] = eventBus.ask(RemoveRedisNode(uri)).mapTo[String]
 
     f map { uri: String =>
       log.info(s"Successfully removed retired Redis node with uri '$uri' from list of sampled nodes")
-      scaleMagnitudeCounter.adjustScale(-1)
-      val currentScale = scaleMagnitudeCounter.getScaleMagnitude().counter
 
-      if (currentScale == 0) {
+      if (scaleMagnitudeCounter.getScaleMagnitude().counter == 0) {
         log.info(s"Scaling down statefulset $statefulSetName now")
         scaleDownStatefulSet
       }
@@ -112,6 +109,7 @@ class Kubernetes(eventBus: ActorRef) extends Actor with ActorLogging {
       val newSS = ss.copy(spec = Some(ss.spec.get.copy(replicas = Some(newReplicas))))
       k8s update newSS map { _ =>
         log.info(s"Statefulset is scaled down from $currentReplicas replicas to $newReplicas replicas")
+        isScalingDown = false
       }
     } recover {
       case e =>
@@ -180,6 +178,7 @@ class Kubernetes(eventBus: ActorRef) extends Actor with ActorLogging {
 
   private def scaleDown = {
     scaleMagnitudeCounter.adjustScale(retiredNodesNumber)
+    isScalingDown = true
 
     // First get a list of all pods in the statefulset. Filter out the `retiredNodesNumber`-th largest pods that have
     // the highest pod numbers. These pods should be removed from the cluster using Cornucopia. When they are success-
@@ -214,6 +213,7 @@ class Kubernetes(eventBus: ActorRef) extends Actor with ActorLogging {
       } else {
         log.warning(s"Not scaling down cluster because it is currently at minimum size of $minimumClusterSize nodes")
         scaleMagnitudeCounter.adjustScale((-1) * retiredNodesNumber)
+        isScalingDown = false
         eventBus ! ResetMemoryScale
       }
     }
