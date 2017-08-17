@@ -22,6 +22,7 @@ object RedisServerInfo {
   case object GetRedisServerInfo
   case object InitializeConnections
   case class InitializeConnection(uri: String)
+  case class RemoveConnection(uri: String)
 }
 
 class RedisServerInfo(eventBus: ActorRef, memorySampler: ActorRef) extends Actor with ActorLogging {
@@ -52,10 +53,17 @@ class RedisServerInfo(eventBus: ActorRef, memorySampler: ActorRef) extends Actor
       }
     case InitializeConnections => initializeConnections
     case InitializeConnection(uri) => initializeConnection(uri, sender)
+    case RemoveConnection(uri) => removeConnection(uri, sender)
   }
 
   private def getRedisUris: String = {
     connections.keys.mkString(", ")
+  }
+
+  private def removeConnection(uri: String, ref: ActorRef) = {
+    // TODO: Manually shutdown the connection. But it's probably not terrible since the connection will just time out?
+    connections.remove(uri)
+    ref ! uri
   }
 
   private def initializeConnection(uri: String, ref: ActorRef) = {
@@ -135,11 +143,12 @@ class ConnectionInitializer(eventBus: ActorRef) extends Actor with ActorLogging 
     } map(ref ! _)
   }
 
-  private def initializeConnection(uri: String, ref: ActorRef): Future[Unit] = {
-    log.info(s"Initializing connection to Redis node with uri $uri")
+  private def initializeConnection(redisUri: String, ref: ActorRef): Future[Unit] = {
+    log.info(s"Initializing connection to Redis node with uri $redisUri")
 
-    val init = initializeConnectionForUri(uri) map { conn: SaladServerCommandsAPI[_,_] =>
-      log.debug(s"Initialized new Redis connection for uri $uri")
+    val init = initializeConnectionForUri(redisUri) map { conn: SaladServerCommandsAPI[_,_] =>
+      log.debug(s"Initialized new Redis connection for uri $redisUri")
+      val uri = redisUri.split("redis://")(1)
       ref ! (uri, conn)
     } recover {
       case e => self ! Abort(e)

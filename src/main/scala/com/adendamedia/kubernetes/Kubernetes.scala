@@ -13,21 +13,28 @@ import com.adendamedia.EventBus
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
+import scala.util.Try
 
 object Kubernetes {
   def props(eventBus: ActorRef): Props = Props(new Kubernetes(eventBus))
 
+  val name = "kubernetes"
+
   case object ScaleUp
+  case object ScaleDown
   case class ScaleUpSuccess(taskKey: String, uri: String)
+  case class ScaleDownSuccess(taskKey: String, uri: String)
 
   case object GetRedisURIs
 
   private val k8sConfig = ConfigFactory.load().getConfig("kubernetes")
   private val statefulSetName = k8sConfig.getString("statefulset-name")
   private val newNodesNumber = k8sConfig.getInt("new-nodes-number")
+  private val retiredNodesNumber = k8sConfig.getInt("retired-nodes-number")
+  private val minimumClusterSize = k8sConfig.getInt("minimum-cluster-size")
 }
 
-class Kubernetes(eventBus: ActorRef) extends Actor {
+class Kubernetes(eventBus: ActorRef) extends Actor with ActorLogging {
   import Conductor._
   import Kubernetes._
   import EventBus._
@@ -42,7 +49,7 @@ class Kubernetes(eventBus: ActorRef) extends Actor {
 
   private val logger = LoggerFactory.getLogger(this.getClass)
 
-  private val conductor = context.system.actorOf(Conductor.props(self, replicaCounter))
+  private val conductor = context.system.actorOf(Conductor.props(self, replicaCounter), Conductor.name)
 
   private var scaleCounter = 0
 
@@ -51,12 +58,18 @@ class Kubernetes(eventBus: ActorRef) extends Actor {
   def receive = {
     case ScaleUp =>
       if (scaleMagnitudeCounter.getScaleMagnitude().counter == 0) scaleUp
-      else logger.warn(s"Kubernetes actor asked to scale, but scale is already underway, so ignoring scale up request for now")
+      else log.warning(s"Kubernetes actor asked to scale up, but scale is already underway, so ignoring scale up request for now")
     case ScaleUpSuccess(taskKey, uri) =>
-      logger.info(s"Received scale up success for task $taskKey node with uri $uri")
+      log.info(s"Received scale up success for task $taskKey node with uri $uri")
       handleScaleUpSuccess(uri)
+    case ScaleDown =>
+      if (scaleMagnitudeCounter.getScaleMagnitude().counter == 0) scaleDown
+      else log.warning(s"Kubernetes actor asked to scale down, but scale is already underway, so ignoring scale down request for now")
+    case ScaleDownSuccess(taskKey, uri) =>
+      log.info(s"Received scale down success for task $taskKey node with uri $uri")
+      handleScaleDownSuccess(uri)
     case GetRedisURIs =>
-      logger.debug("Asked for redis URIs")
+      log.debug("Asked for redis URIs")
       val ref = sender
       getRedisUris map(ref ! _)
   }
@@ -68,8 +81,42 @@ class Kubernetes(eventBus: ActorRef) extends Actor {
     val f: Future[String] = eventBus.ask(AddRedisNode(uri)).mapTo[String]
 
     f map { uri: String =>
-      logger.info(s"Succcessfully added new Redis node with uri '$uri' to list of sampled nodes")
+      log.info(s"Succcessfully added new Redis node with uri '$uri' to list of sampled nodes")
       scaleMagnitudeCounter.adjustScale(-1)
+    }
+  }
+
+  private def handleScaleDownSuccess(uri: String) = {
+
+    val f: Future[String] = eventBus.ask(RemoveRedisNode(uri)).mapTo[String]
+
+    f map { uri: String =>
+      log.info(s"Successfully removed retired Redis node with uri '$uri' from list of sampled nodes")
+      scaleMagnitudeCounter.adjustScale(-1)
+      val currentScale = scaleMagnitudeCounter.getScaleMagnitude().counter
+
+      if (currentScale == 0) {
+        log.info(s"Scaling down statefulset $statefulSetName now")
+        scaleDownStatefulSet
+      }
+    }
+
+  }
+
+  private def scaleDownStatefulSet = {
+    val resource: Future[StatefulSet] = k8s get[StatefulSet] statefulSetName
+
+    resource.flatMap { ss =>
+      val currentReplicas = ss.spec.get.replicas.get
+      val newReplicas = currentReplicas - retiredNodesNumber
+      val newSS = ss.copy(spec = Some(ss.spec.get.copy(replicas = Some(newReplicas))))
+      k8s update newSS map { _ =>
+        log.info(s"Statefulset is scaled down from $currentReplicas replicas to $newReplicas replicas")
+      }
+    } recover {
+      case e =>
+        log.error(s"There was an error trying to scale down statefulset $statefulSetName: {}", e)
+        throw e
     }
   }
 
@@ -128,6 +175,47 @@ class Kubernetes(eventBus: ActorRef) extends Actor {
       case ex: Throwable =>
         logger.error(s"Could not update resource '$statefulSetName': ${ex.toString}")
         Future(Unit)
+    }
+  }
+
+  private def scaleDown = {
+    scaleMagnitudeCounter.adjustScale(retiredNodesNumber)
+
+    // First get a list of all pods in the statefulset. Filter out the `retiredNodesNumber`-th largest pods that have
+    // the highest pod numbers. These pods should be removed from the cluster using Cornucopia. When they are success-
+    // fully forgotten from the cluster, then the `ScaleDownSuccess` message is sent back to this actor. Once
+    // `retiredNodesNumber` scaleDownSuccess messages are received in this actor, scale down the statefulset by
+    // `retiredNodesNumber` pods.
+
+    val pods: Future[PodList] =
+      k8s list[PodList] LabelSelector(LabelSelector.IsEqualRequirement("app", statefulSetName))
+
+    val podsWithNumber: Future[List[(Pod, Int)]] = pods map { podList =>
+      podList map { pod =>
+        val generateName = pod.metadata.generateName
+        val name = pod.metadata.name
+        val number = name.split(generateName)(1).toInt
+        (pod, number)
+      }
+    } recover {
+      case e: java.lang.ArrayIndexOutOfBoundsException =>
+        log.error(s"Error getting pod number to scale down with: {}", e)
+        throw e
+    }
+
+    podsWithNumber map { podList =>
+      if (podList.size > minimumClusterSize) {
+        val podsToRemove = podList.sortBy(- _._2).take(retiredNodesNumber)
+        val uris = podsToRemove.map { case (pod: Pod, _: Int) =>
+          pod.status.get.podIP.get
+        }
+        log.info(s"Sending message to conductor to remove nodes from cluster: ${uris.mkString(", ")}")
+        conductor ! RemoveNodes(uris)
+      } else {
+        log.warning(s"Not scaling down cluster because it is currently at minimum size of $minimumClusterSize nodes")
+        scaleMagnitudeCounter.adjustScale((-1) * retiredNodesNumber)
+        eventBus ! ResetMemoryScale
+      }
     }
 
   }

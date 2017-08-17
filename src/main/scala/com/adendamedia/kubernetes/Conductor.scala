@@ -18,11 +18,14 @@ object Conductor {
   def props(k8sController: ActorRef, replicaCounter: StatefulsetReplicaCounterAgent) =
     Props(new Conductor(k8sController, replicaCounter))
 
+  val name = "conductor"
+
   case class Update(currentNodeIps: List[String], newReplicaCount: Int)
   case class Poll(currentNodeIps: List[String], newReplicaCount: Int)
+  case class RemoveNodes(nodes: List[String])
 }
 
-class Conductor(k8sController: ActorRef, replicaCounter: StatefulsetReplicaCounterAgent) extends Actor {
+class Conductor(k8sController: ActorRef, replicaCounter: StatefulsetReplicaCounterAgent) extends Actor with ActorLogging {
   import Conductor._
   import Cluster._
   import context._
@@ -38,7 +41,7 @@ class Conductor(k8sController: ActorRef, replicaCounter: StatefulsetReplicaCount
   private val pollingPeriodSeconds = pollingPeriod seconds
 
   private val library = new Library
-  private val cluster = context.system.actorOf(Cluster.props(library.ref, k8sController))
+  private val cluster = context.system.actorOf(Cluster.props(library.ref, k8sController), Cluster.name)
 
   // TODO: We might want to have a timeout period after which the conductor actor simply fails
 
@@ -52,6 +55,13 @@ class Conductor(k8sController: ActorRef, replicaCounter: StatefulsetReplicaCount
     case Poll(currentNodeIps: List[String], newReplicaCount) =>
       logger.info(s"Polling redis cluster for new nodes to join: current replica count=${replicaCounter.getReplicaCount().counter}, new replica count=$newReplicaCount")
       pollForNewPods(currentNodeIps, newReplicaCount)
+    case RemoveNodes(nodes: List[String]) =>
+      removeNodes(nodes)
+  }
+
+  private def removeNodes(uris: List[String]) = {
+    log.info(s"Telling Cluster to remove nodes: ${uris.mkString(",")}")
+    uris foreach(cluster ! Remove(_))
   }
 
   def pollForNewPods(previousRedisIps: List[String], newReplicaCount: Int): Future[Unit] = {
@@ -88,8 +98,6 @@ class Conductor(k8sController: ActorRef, replicaCounter: StatefulsetReplicaCount
 
     replicaCounter.incrementReplicaNumber
 
-    // TODO: Use a state agent for currentReplicaCount. This is very important as the for comprehension that calls this
-    // can call it twice, and so isn't threadsafe (i.e., Race conditions)
     if (replicaCounter.getReplicaCount().counter < newReplicaCount) {
       system.scheduler.scheduleOnce(pollingPeriodSeconds, self, Poll(newRedisIps.toList, newReplicaCount))
     } else {

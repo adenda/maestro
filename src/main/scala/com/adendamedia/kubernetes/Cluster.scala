@@ -13,7 +13,10 @@ import scala.concurrent.duration._
 object Cluster {
   def props(cornucopiaRef: ActorRef, k8sController: ActorRef) = Props(new Cluster(cornucopiaRef, k8sController))
 
+  val name = "cluster"
+
   case class Join(ip: String)
+  case class Remove(ip: String)
 }
 
 class Cluster(cornucopiaRef: ActorRef, k8sController: ActorRef) extends Actor with ActorLogging {
@@ -26,15 +29,79 @@ class Cluster(cornucopiaRef: ActorRef, k8sController: ActorRef) extends Actor wi
 
   private val addNodeBackoffTime = 10 // seconds
 
+  private val removeNodeBackoffTime = 10 // seconds
+
   implicit val ec: ExecutionContext = context.dispatcher
 
-  def receive: Receive = joinMaster
+  def receive: Receive = accepting
+
+  def accepting: Receive = {
+    case join: Join =>
+      context.become(joinMaster)
+      self forward join
+    case remove: Remove =>
+      context.become(removeMaster)
+      self forward remove
+  }
+
+  def removeMaster: Receive = {
+    case Remove(ip: String) =>
+      log.info(s"Removing retired Redis cluster node with IP address '$ip' as a master node")
+      val removeMaster = RemoveMasterTask(ip)
+      cornucopiaTask ! removeMaster
+      context.unbecome()
+      context.become(removingMaster(removeMaster))
+  }
+
+  def removingMaster(task: RemoveMasterTask): Receive = {
+    case TaskAccepted =>
+      log.info(s"Remove master task at IP ${task.ip} accepted")
+      context.unbecome()
+      context.become(removeSlave)
+    case TaskDenied =>
+      log.info(s"Task denied, will reschedule the master node to remove ${task.ip} in $removeNodeBackoffTime seconds")
+      context.system.scheduler.scheduleOnce(removeNodeBackoffTime.seconds) {
+        cornucopiaTask ! task
+      }
+    case remove: Remove =>
+      log.info(s"Cluster busy, will reschedule the node to remove ${remove.ip} in $removeNodeBackoffTime seconds")
+      context.system.scheduler.scheduleOnce(removeNodeBackoffTime.seconds) {
+        self ! remove
+      }
+  }
+
+  def removeSlave: Receive = {
+    case Remove(ip: String) =>
+      log.info(s"Removing retired Redis cluster node with IP address '$ip' as a slave node")
+      val removeSlave = RemoveSlaveTask(ip)
+      cornucopiaTask ! removeSlave
+      context.unbecome()
+      context.become(removingSlave(removeSlave))
+  }
+
+  def removingSlave(task: RemoveSlaveTask): Receive = {
+    case TaskAccepted =>
+      log.info(s"Remove slave task at IP ${task.ip} accepted")
+      context.unbecome()
+      context.become(accepting)
+    case TaskDenied =>
+      log.info(s"Task denied, will reschedule the slave node to remove ${task.ip} in $removeNodeBackoffTime seconds")
+      context.system.scheduler.scheduleOnce(removeNodeBackoffTime.seconds) {
+        cornucopiaTask ! task
+      }
+    case remove: Remove =>
+      log.info(s"Cluster busy, will reschedule the node to remove ${remove.ip} in $removeNodeBackoffTime seconds")
+      context.system.scheduler.scheduleOnce(removeNodeBackoffTime.seconds) {
+        self ! remove
+      }
+  }
 
   def joinMaster: Receive = {
     case Join(ip: String) =>
       logger.info(s"Joining new Redis cluster node with IP address '$ip' as a master node")
       val addMaster = AddMasterTask(ip)
       cornucopiaTask ! addMaster
+      context.unbecome()
       context.become(joiningMaster(addMaster))
   }
 
@@ -60,14 +127,14 @@ class Cluster(cornucopiaRef: ActorRef, k8sController: ActorRef) extends Actor wi
       log.info(s"Joining new Redis cluster node with IP address '$ip' as a slave node")
       val addSlave = AddSlaveTask(ip)
       cornucopiaTask ! addSlave
+      context.unbecome()
       context.become(joiningSlave(addSlave))
   }
 
   def joiningSlave(task: AddSlaveTask): Receive = {
     case TaskAccepted =>
       log.info(s"Add slave task at IP ${task.ip} accepted")
-      context.unbecome()
-      context.become(joinMaster)
+      context.unbecome() // reset to accepting state
     case TaskDenied =>
       log.info(s"Task Denied, will reschedule the slave node to join ${task.ip} in $addNodeBackoffTime seconds")
       context.system.scheduler.scheduleOnce(addNodeBackoffTime.seconds) {
@@ -79,7 +146,6 @@ class Cluster(cornucopiaRef: ActorRef, k8sController: ActorRef) extends Actor wi
         self ! join
       }
   }
-
 
 }
 

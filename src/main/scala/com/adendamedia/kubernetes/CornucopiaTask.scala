@@ -12,9 +12,11 @@ object CornucopiaTask {
   trait Task
   case class AddMasterTask(ip: String) extends Task
   case class AddSlaveTask(ip: String) extends Task
+  case class RemoveMasterTask(ip: String) extends Task
+  case class RemoveSlaveTask(ip: String) extends Task
 }
 
-class CornucopiaTask(cornucopiaRef: ActorRef, k8sController: ActorRef, cluster: ActorRef) extends Actor {
+class CornucopiaTask(cornucopiaRef: ActorRef, k8sController: ActorRef, cluster: ActorRef) extends Actor with ActorLogging {
   import CornucopiaTask._
   import Kubernetes._
 
@@ -24,16 +26,27 @@ class CornucopiaTask(cornucopiaRef: ActorRef, k8sController: ActorRef, cluster: 
 
   def receive = {
     case AddMasterTask(ip) =>
-      logger.info(s"Telling Cornucopia to add master node with IP '$ip'")
+      log.info(s"Telling Cornucopia to add master node with IP '$ip'")
       cornucopiaRef ! Task("+master", buildRedisUri(ip))
     case AddSlaveTask(ip) =>
-      logger.info(s"Telling Cornucopia to add slave node with IP '$ip'")
+      log.info(s"Telling Cornucopia to add slave node with IP '$ip'")
       cornucopiaRef ! Task("+slave", buildRedisUri(ip))
+    case RemoveMasterTask(ip) =>
+      log.info(s"Telling Cornucopia to remove master node with IP '$ip'")
+      cornucopiaRef ! Task("-master", buildRedisUri(ip))
+    case RemoveSlaveTask(ip) =>
+      log.info(s"Telling Cornucopia to remove slave node with IP '$ip'")
+      cornucopiaRef ! Task("-slave", buildRedisUri(ip))
     case Right((taskKey: String, uri: RedisURI)) =>
-      logger.info(s"Task '$taskKey' success, processing redis node $uri, telling Kubernetes controller")
-      k8sController ! ScaleUpSuccess(taskKey, uri.toURI.toString)
+      log.info(s"Task '$taskKey' success, processing redis node $uri, telling Kubernetes controller")
+      taskKey.head match {
+        case '+' =>
+          k8sController ! ScaleUpSuccess(taskKey, uri.toURI.toString)
+        case '-' =>
+          k8sController ! ScaleDownSuccess(taskKey, uri.toURI.toString)
+      }
     case Left(e: String) =>
-      logger.error(s"Failed trying to add redis node to cluster: $e")
+      log.error(s"Failed trying to add redis node to cluster: $e")
       // TO-DO: throw exception and implement some type of supervision strategy
     case TaskAccepted =>
       cluster ! TaskAccepted

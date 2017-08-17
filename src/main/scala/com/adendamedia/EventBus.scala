@@ -20,7 +20,10 @@ object EventBus {
   case object GetRedisURIsFromKubernetes
   case object HasInitializedConnections
   case class AddRedisNode(uri: String)
+  case class RemoveRedisNode(uri: String)
   case object ScaleUpCluster
+  case object ScaleDownCluster
+  case object ResetMemoryScale
 }
 
 class EventBus(memoryScale: MemoryScale) extends Actor {
@@ -46,7 +49,7 @@ class EventBus(memoryScale: MemoryScale) extends Actor {
 
   private val redisServerInfo = context.system.actorOf(RedisServerInfo.props(eventBus, memorySampler))
 
-  private val k8s = context.system.actorOf(Kubernetes.props(eventBus))
+  private val k8s = context.system.actorOf(Kubernetes.props(eventBus), Kubernetes.name)
 
   implicit val timeout = Timeout(20 seconds)
 
@@ -63,9 +66,18 @@ class EventBus(memoryScale: MemoryScale) extends Actor {
     case AddRedisNode(uri: String) =>
       logger.debug(s"Received message to add redis node to list of nodes")
       initializeConnection(uri, sender)
+    case RemoveRedisNode(uri: String) =>
+      logger.debug(s"Received message to remove redis node from list of nodes")
+      removeConnection(uri, sender)
     case ScaleUpCluster =>
       logger.debug(s"Received message to scale up the Redis cluster")
       k8s ! ScaleUp
+    case ScaleDownCluster =>
+      logger.debug(s"Received message to scale down the Redis cluster")
+      k8s ! ScaleDown
+    case ResetMemoryScale =>
+      logger.debug(s"Received message to reset memory scale")
+      memorySampler ! ResetMemorySampler
   }
 
   private val memoryScaleSampler = context.system.actorOf(MemoryScaleSampler.props(memoryScale, eventBus))
@@ -81,7 +93,19 @@ class EventBus(memoryScale: MemoryScale) extends Actor {
       logger.debug(s"Added new redis node with uri $uri, and reset memory scale counter")
       ref ! uri
     }
+  }
 
+  private def removeConnection(uri: String, ref: ActorRef) = {
+    val f1: Future[String] = redisServerInfo.ask(RemoveConnection(uri)).mapTo[String]
+    val f2: Future[String] = memoryScaleSampler.ask(Reset).mapTo[String]
+
+    for {
+      uri: String <- f1
+      ok: String <- f2
+    } yield {
+      logger.debug(s"Removed redis node with uri $uri, and reset memory scale counter")
+      ref ! uri
+    }
   }
 
   private def scheduleMemorySampler = {

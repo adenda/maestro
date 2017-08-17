@@ -14,12 +14,13 @@ object MemoryScaleSampler {
   case object Reset
 }
 
-class MemoryScaleSampler(memoryScale: MemoryScale, eventBus: ActorRef) extends Actor {
+class MemoryScaleSampler(memoryScale: MemoryScale, eventBus: ActorRef) extends Actor with ActorLogging {
   import MemoryScaleSampler._
   import EventBus._
 
   private val redisConfig = ConfigFactory.load().getConfig("redis")
   private val scaleUpThreshold = redisConfig.getInt("sampler.scaleup.threshold")
+  private val scaleDownThreshold = redisConfig.getInt("sampler.scaledown.threshold")
 
   private val logger = LoggerFactory.getLogger(this.getClass)
 
@@ -35,8 +36,11 @@ class MemoryScaleSampler(memoryScale: MemoryScale, eventBus: ActorRef) extends A
     val count = memoryScale.getEventCounterNumber().counter
     logger.debug(s"Got memory scale count: $count")
 
-    if (count >= scaleUpThreshold) {
-      logger.info(s"Memory scale value is $count, which is greater than or equal to scale-up threshold=$scaleUpThreshold: Scaling up cluster now")
+    if (count < 0 && (-1) * count >= scaleDownThreshold) {
+      logger.info(s"Memory scale negative value is ${(-1) *count}, which is greater than or equal to scale-down threshold=$scaleDownThreshold: Scaling down cluster now")
+      eventBus ! ScaleDownCluster
+    } else if (count > 0 && count >= scaleUpThreshold) {
+      logger.info(s"Memory scale positive value is $count, which is greater than or equal to scale-up threshold=$scaleUpThreshold: Scaling up cluster now")
       eventBus ! ScaleUpCluster
     } else {
       logger.info(s"Memory scale value is $count, which is less than scale-up threshold=$scaleUpThreshold: Do nothing")
