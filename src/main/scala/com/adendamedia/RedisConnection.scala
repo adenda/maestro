@@ -13,9 +13,11 @@ object RedisConnection {
   type Connection = StatefulRedisConnection[String,String]
   val codec = ByteArrayCodec.INSTANCE
 
-  def createConnection(uri: String) = {
+  case class Redis(salad: SaladServerCommandsAPI[_,_], client: RedisClient)
+
+  def createConnection(uri: String): Try[Redis] = {
+    val client = RedisClient.create(uri)
     val connection = Try {
-      val client = RedisClient.create(uri)
       client.setDefaultTimeout(1000, TimeUnit.MILLISECONDS)
       client.setOptions(ClientOptions.builder()
         .cancelCommandsOnReconnectFailure(true)
@@ -27,9 +29,10 @@ object RedisConnection {
       c.asInstanceOf[Connection].async()
     }
     val serverCommandsApi = lettuceAPI.map { lettuce =>
-      new SaladServerCommandsAPI(
+      val salad = new SaladServerCommandsAPI(
         new SaladAPI(lettuce)
       )
+      Redis(salad, client)
     }
     serverCommandsApi
   }

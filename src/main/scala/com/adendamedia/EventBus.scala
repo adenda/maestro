@@ -47,11 +47,12 @@ class EventBus(memoryScale: MemoryScale) extends Actor {
 
   private val memorySampler = context.system.actorOf(MemorySampler.props(eventBus, memoryScale))
 
-  private val redisServerInfo = context.system.actorOf(RedisServerInfo.props(eventBus, memorySampler))
+  private val redisServerInfo = context.system.actorOf(RedisServerInfo.props(eventBus, memorySampler),
+    RedisServerInfo.name)
 
   private val k8s = context.system.actorOf(Kubernetes.props(eventBus), Kubernetes.name)
 
-  implicit val timeout = Timeout(20 seconds)
+  implicit val timeout = Timeout(60 seconds)
 
   def receive = {
     case GetRedisMemoryUsage =>

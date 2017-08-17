@@ -91,6 +91,7 @@ class Kubernetes(eventBus: ActorRef) extends Actor with ActorLogging {
 
     f map { uri: String =>
       log.info(s"Successfully removed retired Redis node with uri '$uri' from list of sampled nodes")
+      log.info(s"Scale magnitude = ${scaleMagnitudeCounter.getScaleMagnitude().counter}")
 
       if (scaleMagnitudeCounter.getScaleMagnitude().counter == 0) {
         log.info(s"Scaling down statefulset $statefulSetName now")
