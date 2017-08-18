@@ -27,5 +27,11 @@ class ScaleCounterAgent(system: ActorSystem) {
     })
   }
 
+  def reset(): Unit = {
+    stateAgent send(oldState => {
+      oldState.copy(0)
+    })
+  }
+
   def getScaleMagnitude(): ScaleCounter = stateAgent.get()
 }

@@ -23,6 +23,7 @@ object Kubernetes {
   case object ScaleDown
   case class ScaleUpSuccess(taskKey: String, uri: String)
   case class ScaleDownSuccess(taskKey: String, uri: String)
+  case object ResetKubernetes
 
   case object GetRedisURIs
 
@@ -31,6 +32,7 @@ object Kubernetes {
   private val newNodesNumber = k8sConfig.getInt("new-nodes-number")
   private val retiredNodesNumber = k8sConfig.getInt("retired-nodes-number")
   private val minimumClusterSize = k8sConfig.getInt("minimum-cluster-size")
+  private val scaleDownBackoffTime = k8sConfig.getInt("scale-down-backoff-time")
 }
 
 class Kubernetes(eventBus: ActorRef) extends Actor with ActorLogging {
@@ -71,6 +73,10 @@ class Kubernetes(eventBus: ActorRef) extends Actor with ActorLogging {
       log.debug("Asked for redis URIs")
       val ref = sender
       getRedisUris map(ref ! _)
+    case ResetKubernetes =>
+      log.info(s"Resetting controller")
+      isScalingDown = false
+      scaleMagnitudeCounter.reset()
   }
 
   private def handleScaleUpSuccess(uri: String) = {
@@ -110,7 +116,7 @@ class Kubernetes(eventBus: ActorRef) extends Actor with ActorLogging {
       val newSS = ss.copy(spec = Some(ss.spec.get.copy(replicas = Some(newReplicas))))
       k8s update newSS map { _ =>
         log.info(s"Statefulset is scaled down from $currentReplicas replicas to $newReplicas replicas")
-        isScalingDown = false
+        context.system.scheduler.scheduleOnce(scaleDownBackoffTime.seconds)(self ! ResetKubernetes)
       }
     } recover {
       case e =>
@@ -213,8 +219,7 @@ class Kubernetes(eventBus: ActorRef) extends Actor with ActorLogging {
         conductor ! RemoveNodes(uris)
       } else {
         log.warning(s"Not scaling down cluster because it is currently at minimum size of $minimumClusterSize nodes")
-        scaleMagnitudeCounter.adjustScale((-1) * retiredNodesNumber)
-        isScalingDown = false
+        self ! ResetKubernetes
         eventBus ! ResetMemoryScale
       }
     }
