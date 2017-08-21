@@ -114,9 +114,26 @@ class Kubernetes(eventBus: ActorRef) extends Actor with ActorLogging {
       val currentReplicas = ss.spec.get.replicas.get
       val newReplicas = currentReplicas - retiredNodesNumber
       val newSS = ss.copy(spec = Some(ss.spec.get.copy(replicas = Some(newReplicas))))
-      k8s update newSS map { _ =>
+      k8s update newSS flatMap { _ =>
         log.info(s"Statefulset is scaled down from $currentReplicas replicas to $newReplicas replicas")
-        context.system.scheduler.scheduleOnce(scaleDownBackoffTime.seconds)(self ! ResetKubernetes)
+
+        // The PVCs and PVs for the statefulset pods we're scaling down need to be deleted as well. It is sufficient to
+        // delete the PVC using k8s to delete both resources.
+        val pvcList: Future[PersistentVolumeClaimList] =
+          k8s list[PersistentVolumeClaimList] LabelSelector(LabelSelector.IsEqualRequirement("app", statefulSetName))
+
+        pvcList flatMap { pvcs =>
+          val pvcsToRemove = pvcs.drop(newReplicas)
+          val pvcsFutureList: List[Future[Unit]] = pvcsToRemove map { pvc =>
+            val pvcName: String = pvc.metadata.name
+            log.info(s"Deleting persistent volume claim $pvcName")
+            k8s delete[PersistentVolumeClaim] pvcName
+          }
+          Future.sequence(pvcsFutureList).map { _ =>
+            log.info(s"Deleted persistent volumes for scaled down statefulset")
+            context.system.scheduler.scheduleOnce(scaleDownBackoffTime.seconds)(self ! ResetKubernetes)
+          }
+        }
       }
     } recover {
       case e =>
