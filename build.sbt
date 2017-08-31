@@ -4,8 +4,7 @@ name := "maestro"
 
 organization := "com.adendamedia"
 
-//version := "0.1.4"
-version := "0.7.2-SNAPSHOT"
+version := "0.7.3"
 
 scalaVersion := "2.11.8"
 
@@ -28,16 +27,13 @@ val testDependencies = Seq(
 
 libraryDependencies ++= Seq(
   "com.adendamedia" %% "salad" % "0.9.2",
-  "com.adendamedia" %% "cornucopia" % "0.6.1-SNAPSHOT",
-//  "com.adendamedia" %% "cornucopia" % "0.44-SNAPSHOT",
+  "com.adendamedia" %% "cornucopia" % "0.6.2",
   "com.typesafe" % "config" % "1.3.1",
   "biz.paluch.redis" % "lettuce" % "5.0.0.Beta1",
   "com.typesafe.akka" %% "akka-actor" % akkaVersion,
   "com.typesafe.akka" %% "akka-agent" % akkaVersion,
   "com.typesafe.akka" %% "akka-stream" % akkaVersion,
-//  "io.doriordan" %% "skuber" % "0.5-SNAPSHOT",
   "io.doriordan" %% "skuber" % "0.7-SNAPSHOT",
-//  "io.doriordan" %% "skuber" % "1.3.0",
   "org.slf4j" % "slf4j-log4j12" % "1.7.22"
 ).map(_.exclude("ch.qos.logback", "logback-classic")) ++ testDependencies
 
