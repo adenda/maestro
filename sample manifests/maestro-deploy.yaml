@@ -1,0 +1,39 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: maestro
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        tier: maestro
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-nodepool: standard-4-c
+      terminationGracePeriodSeconds: 0
+      containers:
+      - name: maestro
+        imagePullPolicy: Always
+        image: adenda/maestro:0.7.3
+        volumeMounts:
+        - name: maestro-conf-volume
+          mountPath: /usr/local/etc
+        lifecycle:
+          preStop:
+            exec:
+              command: ["echo", "going down!"]
+        env:
+        - name: SKUBER_URL
+          value: "http://localhost:8001"
+      - args:
+        - proxy
+        - -p
+        - "8001"
+        image: gcr.io/adenda-server-mongodb/kubectl:v1.6.0
+        imagePullPolicy: IfNotPresent
+        name: kubectl
+      volumes:
+      - name: maestro-conf-volume
+        configMap:
+          name: maestro-conf
